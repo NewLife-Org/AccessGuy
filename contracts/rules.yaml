@@ -1,0 +1,474 @@
+# AccessGuy — rubryka scoringu jako dane (jedno źródło prawdy).
+# Procesor (Python) czyta ten plik: metadane (tytuł/severity/punkty/rekomendacja) pochodzą stąd,
+# a logika "czy reguła się odpala" to nazwana funkcja-predykat w scoring/predicates.py o tym samym `id`.
+# Dzięki temu progi i teksty zmieniasz tu, bez dotykania kodu. Skaner NIE liczy scoringu (robi to procesor).
+
+meta:
+  rubricVersion: "1.0"
+  author: "Daniel \"NewLife\" Budyn"
+
+# Globalne progi (dni). Pojedyncze reguły mogą nadpisać w sekcji `rules[].thresholds`.
+thresholds:
+  inactiveWarnDays: 90
+  inactiveCriticalDays: 180
+  staleGuestPendingDays: 30
+  recentGrantDays: 14
+  eligibleUnusedDays: 90
+  passwordMaxAgeDays: 365
+  # --- 1.2: moduły Grupy i Aplikacje ---
+  secretExpiryWarnDays: 30        # sekret/cert wygasa w tylu dniach -> ostrzeżenie
+  secretLongLivedDays: 730        # poświadczenie ważne dłużej niż to (2 lata) -> antywzorzec
+  groupStaleDays: 365            # grupa M365 nieodnawiana tyle dni -> kandydat do przeglądu
+  appDormantDays: 180            # SP bez logowania tyle dni -> aplikacja uśpiona
+  # --- progi nowych reguł (więcej wniosków) ---
+  failedSignInWarn: 10           # tyle nieudanych logowań w oknie -> sygnał password spray/brute
+  manyPrivRoles: 3               # konto z tyloma rolami uprzywilejowanymi -> nadmiarowe uprawnienia
+  largeGroupMembers: 20          # uprzywilejowana grupa z tyloma członkami -> duży promień rażenia
+  credentialSprawl: 4            # tyle poświadczeń na aplikacji -> rozrost sekretów
+  wideConsentUsers: 20           # tylu użytkowników z indywidualną zgodą -> szeroka ekspozycja
+  nightSignInWarn: 5             # tyle nocnych logowań -> sygnał (konto uprzywilejowane: już od 1)
+  credentialEventDays: 30        # zdarzenie na poświadczeniach app w tylu dniach -> do potwierdzenia (1.3)
+
+# Sumaryczny score -> poziom. Dolne granice włącznie.
+severityBands:
+  low: 10
+  medium: 25
+  high: 45
+  critical: 70
+
+# Role traktowane jako uprzywilejowane (po nazwie). Skaner ustawia roleAssignment.isPrivileged,
+# ale procesor może to zweryfikować względem tej listy.
+privilegedRoles:
+  - "Global Administrator"
+  - "Privileged Role Administrator"
+  - "Privileged Authentication Administrator"
+  - "Security Administrator"
+  - "Application Administrator"
+  - "Cloud Application Administrator"
+  - "Exchange Administrator"
+  - "SharePoint Administrator"
+  - "User Administrator"
+  - "Conditional Access Administrator"
+  - "Authentication Administrator"
+  - "Helpdesk Administrator"
+  - "Intune Administrator"
+
+# Zakresy aplikacji wysokiego ryzyka (do flagowania appGrant.isHighRisk — zgody delegowane).
+highRiskAppScopes:
+  - "Directory.ReadWrite.All"
+  - "RoleManagement.ReadWrite.Directory"
+  - "Mail.ReadWrite"
+  - "Mail.Send"
+  - "Files.ReadWrite.All"
+  - "User.ReadWrite.All"
+
+# Uprawnienia APLIKACYJNE (app-only) wysokiego ryzyka — działają bez użytkownika, więc
+# kompromitacja aplikacji = dostęp do całego tenanta. Zapis + eskalacja (nadawanie ról/zgód)
+# + wysyłka/modyfikacja poczty. To one decydują o isHighRisk dla uprawnienia aplikacyjnego.
+highRiskAppRoles:
+  - "Directory.ReadWrite.All"
+  - "RoleManagement.ReadWrite.Directory"
+  - "AppRoleAssignment.ReadWrite.All"
+  - "Application.ReadWrite.All"
+  - "Application.ReadWrite.OwnedBy"
+  - "Group.ReadWrite.All"
+  - "GroupMember.ReadWrite.All"
+  - "User.ReadWrite.All"
+  - "Mail.ReadWrite"
+  - "Mail.Send"
+  - "MailboxSettings.ReadWrite"
+  - "Files.ReadWrite.All"
+  - "Sites.ReadWrite.All"
+  - "Sites.FullControl.All"
+
+# Masowy ODCZYT app-only — sam w sobie legalny dla wielu integracji, ale wart odnotowania
+# (ekspozycja danych całego tenanta). Osobna, łagodniejsza reguła (APP_BROAD_READ).
+broadReadAppRoles:
+  - "Directory.Read.All"
+  - "User.Read.All"
+  - "Group.Read.All"
+  - "Mail.Read"
+  - "Files.Read.All"
+  - "Sites.Read.All"
+  - "Calendars.Read"
+  - "People.Read.All"
+
+# Reguły. `id` musi mieć odpowiadający predykat w predicates.py (PREDICATES[id]).
+rules:
+  - id: INACTIVE_90
+    title: "Konto nieaktywne > 90 dni"
+    severity: medium
+    points: 20
+    recommendation: "Potwierdź z biznesem, czy konto jest nadal potrzebne; rozważ wyłączenie."
+
+  - id: INACTIVE_180
+    title: "Konto nieaktywne > 180 dni"
+    severity: high
+    points: 35
+    recommendation: "Pilny przegląd — kandydat do wyłączenia/offboardingu."
+
+  - id: NEVER_SIGNED_IN
+    title: "Konto aktywne i licencjonowane, nigdy się nie logowało"
+    severity: high
+    points: 30
+    recommendation: "Zweryfikuj zasadność istnienia konta i przypisanej licencji."
+
+  - id: STALE_GUEST
+    title: "Nieaktywny / niezaakceptowany gość"
+    severity: high
+    points: 30
+    recommendation: "Usuń lub potwierdź współpracę; zaproszenie wisi/nieużywane."
+
+  - id: GUEST_PRIVILEGED
+    title: "Gość z rolą uprzywilejowaną"
+    severity: critical
+    points: 50
+    recommendation: "Natychmiastowa weryfikacja — gość nie powinien mieć ról uprzywilejowanych."
+
+  - id: EXT_PRIVILEGED
+    title: "Konto zewnętrzne (member) z rolą uprzywilejowaną"
+    severity: critical
+    points: 45
+    recommendation: "Zweryfikuj zasadność; rozważ przeniesienie na PIM-eligible lub odebranie."
+
+  - id: PERMANENT_PRIVILEGE
+    title: "Stałe (poza-PIM) przypisanie roli uprzywilejowanej"
+    severity: high
+    points: 30
+    recommendation: "Przenieś na PIM (eligible + aktywacja na żądanie)."
+
+  - id: ELIGIBLE_NEVER_USED
+    title: "Rola PIM-eligible nieaktywowana w oknie obserwacji"
+    severity: medium
+    points: 15
+    recommendation: "Rozważ odebranie uprawnienia eligible — nieużywane."
+
+  - id: PRIV_NO_MFA
+    title: "Konto uprzywilejowane bez zarejestrowanego MFA"
+    severity: critical
+    points: 50
+    recommendation: "Wymuś rejestrację MFA / dostęp warunkowy natychmiast."
+
+  - id: NO_MFA
+    title: "Brak zarejestrowanego MFA"
+    severity: medium
+    points: 15
+    recommendation: "Wymuś rejestrację MFA."
+
+  - id: RECENT_ROLE_GRANT
+    title: "Rola nadana niedawno — do potwierdzenia"
+    severity: medium
+    points: 15
+    recommendation: "Potwierdź autoryzację nadania (zmiana w oknie obserwacji)."
+
+  - id: HIGH_RISK_APP
+    title: "Zgoda na aplikację o wysokim ryzyku"
+    severity: high
+    points: 25
+    recommendation: "Zweryfikuj zgodę OAuth i zakres uprawnień aplikacji."
+
+  - id: DISABLED_WITH_ASSETS
+    title: "Konto wyłączone, ale wciąż z rolą i/lub licencją"
+    severity: medium
+    points: 15
+    recommendation: "Odbierz role/licencje wyłączonego konta (higiena, koszt)."
+
+  - id: LICENSE_WASTE
+    title: "Licencja przypisana, konto nieaktywne"
+    severity: low
+    points: 10
+    recommendation: "Zwolnij licencję — koszt + powierzchnia ataku."
+
+  - id: NO_MANAGER_PRIVILEGED
+    title: "Konto uprzywilejowane bez przypisanego managera"
+    severity: low
+    points: 10
+    recommendation: "Uzupełnij właściciela/managera (governance, atestacja)."
+
+  - id: SYNC_ANOMALY
+    title: "Konto uprzywilejowane synchronizowane z on-prem"
+    severity: low
+    points: 10
+    recommendation: "Rozważ konto cloud-only dla ról uprzywilejowanych (separacja)."
+
+  # --- 1.1: reguły oparte o activity (signIns) i datę hasła ---
+  - id: UNUSED_PRIVILEGE
+    title: "Uprawnienia uprzywilejowane posiadane, ale nieużywane"
+    severity: medium
+    points: 20
+    recommendation: "Konto ma aktywną rolę uprzywilejowaną, ale nie loguje się / nie używa jej — rozważ odebranie lub przeniesienie na PIM-eligible."
+
+  - id: RISKY_SIGNINS
+    title: "Logowania oznaczone jako ryzykowne (Identity Protection)"
+    severity: high
+    points: 25
+    recommendation: "Sprawdź logowania ryzykowne — możliwy incydent (compromise, impossible travel). Zweryfikuj i wymuś reset/MFA."
+
+  - id: LEGACY_AUTH_SUCCESS
+    title: "UDANE logowanie przez legacy auth (ominięcie MFA)"
+    severity: high
+    points: 30
+    recommendation: "Realne ominięcie MFA — protokół legacy uwierzytelnił konto. Pilnie ustal źródło (urządzenie/aplikacja/skrzynka usługowa), wymuś nowoczesne uwierzytelnianie i wyłącz dany protokół na skrzynce."
+
+  - id: LEGACY_AUTH_BLOCKED
+    title: "Próby legacy auth (zablokowane)"
+    severity: low
+    points: 5
+    recommendation: "Próby legacy figurują w logu, ale zostały zablokowane (np. przez Conditional Access) — to NIE jest przejęcie. Zweryfikuj listę protokołów: część (np. Authenticated SMTP do drukarek) bywa świadomie akceptowana. Jeśli żaden nie jest potrzebny, domknij na poziomie skrzynek."
+
+  - id: NIGHT_SIGNINS
+    title: "Logowania w nietypowych godzinach (noc 20:00–04:00)"
+    severity: low
+    points: 10
+    recommendation: "Potwierdź, czy nocna aktywność jest oczekiwana (np. automaty/strefy czasowe) — w przeciwnym razie zbadaj. Reguła odpala się od progu nightSignInWarn; dla kont uprzywilejowanych już od pierwszego nocnego logowania."
+
+  - id: STALE_PASSWORD
+    title: "Stare hasło na koncie bez MFA"
+    severity: low
+    points: 10
+    recommendation: "Włącz MFA (priorytet) — wtedy wiek hasła przestaje mieć znaczenie. Ewentualnie passwordless (FIDO2/Windows Hello). Regułę pomijamy dla kont z MFA."
+
+  - id: MANY_FAILED_SIGNINS
+    title: "Dużo nieudanych logowań (możliwy atak)"
+    severity: medium
+    points: 15
+    recommendation: "Wysoka liczba nieudanych logowań w oknie — typowy sygnał password spray / brute force. Sprawdź źródła (IP, kraje), rozważ smart lockout, MFA i blokadę legacy auth."
+
+  - id: MULTIPLE_PRIV_ROLES
+    title: "Konto z wieloma rolami uprzywilejowanymi"
+    severity: medium
+    points: 15
+    recommendation: "Kumulacja ról uprzywilejowanych na jednym koncie — naruszenie zasady minimalnych uprawnień i jeden punkt totalnej kompromitacji. Rozdziel obowiązki, przenieś na PIM-eligible."
+
+  - id: NEW_PRIVILEGED_ACCOUNT
+    title: "Świeżo utworzone konto uprzywilejowane"
+    severity: medium
+    points: 15
+    recommendation: "Konto z rolą uprzywilejowaną powstało niedawno — zweryfikuj, kto i po co je założył (potencjalna persystencja po włamaniu)."
+
+  - id: GUEST_WITH_LICENSE
+    title: "Gość z przypisaną licencją"
+    severity: low
+    points: 10
+    recommendation: "Konto-gość ma płatną licencję — zwykle zbędny koszt i poszerzona powierzchnia. Zweryfikuj zasadność; zazwyczaj goście nie potrzebują licencji."
+
+  - id: EXTERNAL_MEMBER
+    title: "Konto zewnętrzne jako member"
+    severity: low
+    points: 10
+    recommendation: "Tożsamość spoza zweryfikowanych domen występuje jako 'member' (nie guest) — omija część polityk B2B. Potwierdź, czy powinna być kontem wewnętrznym czy gościem."
+
+  # --- KORELACJE (tożsamość × grupa × logi sign-in) -------------------------
+  # Te reguły celowo NAKŁADAJĄ się punktowo na reguły bazowe (RISKY_SIGNINS itd.) —
+  # ta sama aktywność na koncie z realną władzą to inna klasa ryzyka i MA ważyć więcej.
+  # ANTY-FALSE-POSITIVE: odpala się WYŁĄCZNIE na twardych dowodach (ryzykowne logowania
+  # Identity Protection, UDANE legacy auth, nieobsłużony riskState z riskyUsers).
+  # Sama seria nieudanych logowań NIE wystarcza (to często wygasłe hasło, nie atak) —
+  # zostaje w MANY_FAILED_SIGNINS (medium) i trafia tu co najwyżej jako kontekst w evidence.
+  - id: PRIV_COMPROMISE_SIGNALS
+    title: "Twarde sygnały ataku na koncie uprzywilejowanym"
+    severity: critical
+    points: 50
+    recommendation: "Konto z efektywną rolą uprzywilejowaną (bezpośrednio lub przez grupę) ma w logach TWARDY dowód ataku — uwierzytelnienie faktycznie zaszło w podejrzany sposób (ryzykowne logowanie / udane legacy auth) albo Identity Protection potwierdza nieobsłużone ryzyko. Evidence wymienia konkretne sygnały z liczbami i oknem czasowym. Traktuj jak incydent: zweryfikuj logowania (IP, kraje, urządzenia), zresetuj poświadczenia, wymuś MFA, sprawdź persystencję (nowe sekrety aplikacji, reguły skrzynki, urządzenia)."
+
+  # --- 1.3: Identity Protection (riskyUsers) i Conditional Access ------------
+  - id: RISKY_USER_UNREMEDIATED
+    title: "Nieobsłużone ryzyko konta (Identity Protection)"
+    severity: high
+    points: 30
+    recommendation: "Identity Protection oznaczyło konto jako atRisk/confirmedCompromised i alert wisi nieobsłużony — nikt nie zresetował hasła ani nie zweryfikował zdarzenia. Przejdź do Entra ID → Identity Protection → Risky users: zbadaj detekcje, wymuś reset hasła + MFA albo świadomie odrzuć (dismiss) z adnotacją."
+
+  - id: CA_MFA_EXCLUDED
+    title: "Konto wykluczone z polityk MFA (Conditional Access)"
+    severity: high
+    points: 25
+    recommendation: "Konto jest wykluczone z włączonych polityk Conditional Access wymagających MFA (bezpośrednio lub przez grupę) — sama rejestracja MFA nic nie daje, jeśli polityka nigdy jej nie wymusi. Wykluczenia bywają zasadne (konta break-glass), ale muszą być policzalne, udokumentowane i monitorowane. Zweryfikuj każde i usuń zbędne."
+
+  - id: SHADOW_PRIVILEGE
+    title: "Rola uprzywilejowana dziedziczona przez grupę"
+    severity: high
+    points: 30
+    recommendation: "Konto nie ma bezpośredniego przypisania roli, ale dziedziczy rolę uprzywilejowaną przez członkostwo w grupie — typowy martwy punkt przeglądów uprawnień. Uwzględnij grupy role-assignable w przeglądzie ról, zweryfikuj zasadność członkostwa, rozważ PIM for Groups."
+
+# === MODUŁ GRUPY (1.2) =======================================================
+# Każdy id ma predykat w scoring/predicates_group.py (GROUP_PREDICATES[id]).
+groupRules:
+  - id: GROUP_ROLE_ASSIGNABLE_PRIV
+    title: "Grupa role-assignable z rolą uprzywilejowaną"
+    severity: critical
+    points: 50
+    recommendation: "Najwyższy priorytet — każdy członek grupy dziedziczy rolę uprzywilejowaną. Ogranicz członkostwo do minimum, włącz PIM for Groups i przegląd właścicieli."
+
+  - id: GROUP_ROLE_ASSIGNABLE
+    title: "Grupa role-assignable (przypisywalna do ról)"
+    severity: medium
+    points: 15
+    recommendation: "Grupa może otrzymać role katalogowe (isAssignableToRole). Potwierdź zasadność i pilnuj, kto może edytować członkostwo."
+
+  - id: GROUP_OWNERLESS
+    title: "Grupa bez właściciela"
+    severity: medium
+    points: 20
+    recommendation: "Przypisz co najmniej jednego właściciela — grupy bez ownera nie są atestowane i puchną w nieskończoność (governance)."
+
+  - id: GROUP_DYNAMIC_MEMBERSHIP
+    title: "Dynamiczne członkostwo — reguła do przeglądu"
+    severity: low
+    points: 10
+    recommendation: "Zweryfikuj regułę membershipRule — zbyt szeroka reguła może automatycznie nadać dostęp/licencje niezamierzonym kontom."
+
+  - id: GROUP_GUESTS_WITH_ACCESS
+    title: "Goście w grupie nadającej dostęp"
+    severity: high
+    points: 25
+    recommendation: "Grupa nadaje role/licencje/dostęp i zawiera gości. Potwierdź, czy konta zewnętrzne powinny dziedziczyć ten dostęp."
+
+  - id: GROUP_PUBLIC_M365
+    title: "Publiczna grupa Microsoft 365"
+    severity: low
+    points: 10
+    recommendation: "Grupa M365 'Public' — każdy w organizacji może dołączyć i czytać zawartość (Teams/SharePoint). Rozważ 'Private', jeśli treść jest wrażliwa."
+
+  - id: GROUP_ONPREM_ROLE
+    title: "Grupa z on-prem przypisana do roli"
+    severity: medium
+    points: 15
+    recommendation: "Grupa synchronizowana z AD lokalnego nadaje rolę w chmurze — kompromitacja on-prem eskaluje do Entra. Rozważ grupę cloud-only role-assignable."
+
+  - id: GROUP_LICENSE_NO_MEMBERS
+    title: "Grupa z licencjami bez członków"
+    severity: low
+    points: 10
+    recommendation: "Grupa przypisuje licencje, ale jest pusta — potencjalnie marnowane licencje lub martwa konfiguracja. Zweryfikuj."
+
+  - id: GROUP_EMPTY
+    title: "Pusta grupa zabezpieczająca"
+    severity: low
+    points: 5
+    recommendation: "Pusta grupa security/M365 — higiena katalogu. Usuń, jeśli nieużywana."
+
+  - id: GROUP_LARGE_PRIVILEGED
+    title: "Duża grupa nadająca uprawnienia"
+    severity: high
+    points: 30
+    recommendation: "Grupa nadaje role uprzywilejowane i ma wielu członków — ogromny promień rażenia (każdy członek = admin). Ogranicz członkostwo do minimum i włącz PIM for Groups."
+
+  - id: GROUP_DYNAMIC_PRIVILEGED
+    title: "Dynamiczna grupa nadająca dostęp"
+    severity: high
+    points: 25
+    recommendation: "Reguła członkostwa automatycznie nadaje role/licencje — zmiana atrybutu konta może po cichu przyznać uprawnienia. Zweryfikuj regułę i zakres; nie używaj dynamiki do ról uprzywilejowanych."
+
+  - id: GROUP_NESTED
+    title: "Grupa zagnieżdżona (pod-grupy)"
+    severity: low
+    points: 10
+    recommendation: "Grupa zawiera inne grupy — efektywny dostęp trudniej zaudytować (dziedziczenie). Rozważ spłaszczenie struktury przy grupach nadających dostęp."
+
+  # --- KORELACJA (grupa × tożsamość × logi sign-in) -------------------------
+  - id: GROUP_PRIV_WEAK_MEMBERS
+    title: "Słabo chronieni członkowie grupy uprzywilejowanej"
+    severity: critical
+    points: 40
+    recommendation: "Grupa nadaje rolę uprzywilejowaną, a wskazani członkowie są słabo chronieni (brak MFA / udane legacy auth / ryzykowne logowania) — każdy z nich to admin bez ochrony i gotowa ścieżka eskalacji. Wymuś MFA na członkach albo usuń ich z grupy; rozważ PIM for Groups."
+
+# === MODUŁ APLIKACJE (1.2) ===================================================
+# Każdy id ma predykat w scoring/predicates_app.py (APP_PREDICATES[id]).
+appRules:
+  - id: APP_HIGH_RISK_PERM
+    title: "Aplikacja z uprzywilejowanym uprawnieniem aplikacyjnym"
+    severity: critical
+    points: 45
+    recommendation: "Uprawnienie app-only działa bez użytkownika — kompromitacja aplikacji = dostęp do tenanta. Zweryfikuj zasadność, ogranicz zakres, rozważ uprawnienia delegowane."
+
+  - id: APP_BROAD_READ
+    title: "Aplikacja z masowym odczytem (app-only)"
+    severity: medium
+    points: 15
+    recommendation: "Aplikacja czyta dane całego tenanta bez kontekstu użytkownika. Potwierdź, że integracja faktycznie tego potrzebuje (zasada minimalnych uprawnień)."
+
+  - id: APP_SECRET_EXPIRED
+    title: "Wygasłe poświadczenie aktywnej aplikacji"
+    severity: medium
+    points: 15
+    recommendation: "Sekret/certyfikat wygasł, a aplikacja jest włączona — albo nieużywana (usuń poświadczenie), albo integracja jest zepsuta. Posprzątaj."
+
+  - id: APP_SECRET_EXPIRING
+    title: "Poświadczenie wygasa wkrótce"
+    severity: low
+    points: 10
+    recommendation: "Zaplanuj rotację przed wygaśnięciem, aby uniknąć przerwy w działaniu integracji."
+
+  - id: APP_LONG_LIVED_SECRET
+    title: "Bardzo długo żyjące poświadczenie"
+    severity: medium
+    points: 15
+    recommendation: "Poświadczenie ważne >2 lata zwiększa okno na wyciek. Skróć czas życia i wprowadź rotację (najlepiej certyfikat z Key Vault)."
+
+  - id: APP_SECRET_OVER_CERT
+    title: "Sekret klienta zamiast certyfikatu"
+    severity: low
+    points: 10
+    recommendation: "Client secret łatwiej wyciec niż certyfikat. Migruj na certyfikat (lub federację workload identity)."
+
+  - id: APP_NO_OWNER
+    title: "Aplikacja bez właściciela"
+    severity: medium
+    points: 15
+    recommendation: "Brak właściciela = brak atestacji i nikt nie czuje się odpowiedzialny. Przypisz właściciela biznesowego/technicznego."
+
+  - id: APP_MULTI_TENANT
+    title: "Aplikacja wielodostępna (multi-tenant)"
+    severity: low
+    points: 10
+    recommendation: "signInAudience pozwala na logowanie z innych tenantów/kont. Potwierdź, że to zamierzone — w przeciwnym razie zawęź do AzureADMyOrg."
+
+  - id: APP_UNVERIFIED_PRIVILEGED
+    title: "Uprzywilejowana aplikacja bez zweryfikowanego wydawcy"
+    severity: medium
+    points: 10
+    recommendation: "Aplikacja z wysokim uprawnieniem nie ma zweryfikowanego wydawcy (MPN). Zweryfikuj pochodzenie zanim utrzymasz dostęp."
+
+  - id: APP_CREDENTIAL_SPRAWL
+    title: "Rozrost poświadczeń aplikacji"
+    severity: low
+    points: 10
+    recommendation: "Wiele aktywnych sekretów/certyfikatów na jednej aplikacji — trudniej rotować i kontrolować, większe okno na wyciek. Zostaw minimum, najlepiej jeden certyfikat."
+
+  - id: APP_WIDE_CONSENT
+    title: "Aplikacja z szeroką zgodą użytkowników"
+    severity: medium
+    points: 15
+    recommendation: "Wielu użytkowników indywidualnie wyraziło zgodę na tę aplikację — duża ekspozycja danych i klasyczny wektor 'illicit consent'. Zweryfikuj zakres zgód i rozważ politykę zgód admina."
+
+  - id: APP_ORPHANED
+    title: "Porzucona aplikacja z żywym poświadczeniem"
+    severity: medium
+    points: 15
+    recommendation: "Aplikacja bez właściciela i bez przypisanych użytkowników, a wciąż ma poświadczenie — prawdopodobnie zapomniana integracja. Usuń lub przypisz właściciela; martwe aplikacje z sekretami to cel ataku."
+
+  # --- KORELACJE (aplikacja × tożsamość × grupa) ----------------------------
+  - id: APP_PRIV_OWNER_WEAK
+    title: "Słabo chroniony właściciel uprzywilejowanej aplikacji"
+    severity: critical
+    points: 40
+    recommendation: "Właściciel aplikacji z uprawnieniami app-only wysokiego ryzyka może dodać własne poświadczenie i działać jako aplikacja (bez MFA, bez użytkownika). Wymuś MFA na właścicielach, ogranicz listę ownerów do minimum i monitoruj zdarzenia 'Add service principal credential' w audycie."
+
+  - id: APP_GUEST_REACH
+    title: "Goście z dostępem do aplikacji"
+    severity: medium
+    points: 15
+    recommendation: "Konta zewnętrzne (goście) mają dostęp do aplikacji — bezpośrednio lub przez przypisaną grupę z gośćmi. Potwierdź, że to zamierzone; dostęp gości do wewnętrznych integracji to częsty kanał eksfiltracji danych."
+
+  # --- 1.3: aktywność SP (servicePrincipalSignInActivities) i audit poświadczeń ---
+  - id: APP_DORMANT_PRIVILEGED
+    title: "Uśpiona aplikacja z uprawnieniami wysokiego ryzyka"
+    severity: high
+    points: 30
+    recommendation: "Aplikacja trzyma uprawnienia app-only wysokiego ryzyka, ale jej service principal nie loguje się od dawna (lub wcale) — nieużywany ładunek, którego kompromitacja daje pełnię uprawnień bez żadnego śladu 'normalnego' użycia. Odbierz uprawnienia albo wyłącz aplikację; jeśli ma zostać, udokumentuj właściciela i przypadek użycia."
+
+  - id: APP_CREDENTIAL_ADDED
+    title: "Świeża zmiana poświadczeń aplikacji"
+    severity: medium
+    points: 15
+    recommendation: "Audit odnotował niedawne dodanie/zmianę sekretu lub certyfikatu (evidence podaje kto i kiedy). Dodanie poświadczenia to dokładnie ten ruch, który wykonuje atakujący po przejęciu właściciela aplikacji — potwierdź z autorem zmiany, że była planowa (rotacja), i powiąż z procesem zarządzania sekretami."

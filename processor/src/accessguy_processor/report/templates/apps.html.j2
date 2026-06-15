@@ -1,0 +1,243 @@
+{% from '_sevbar.html.j2' import sevbar %}<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AccessGuy — raport: Aplikacje</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<header class="ag-header">
+  <pre class="ag-logo" aria-label="AccessGuy logo">{{ access_guy_logo }}
+{{ access_guy_text }}</pre>
+  <div class="ag-brand">AccessGuy</div>
+  <div class="ag-sub">Przegląd uprawnień Microsoft Entra ID · moduł <strong>Aplikacje</strong></div>
+  <div class="ag-meta">
+    Tenant: <strong>{{ dataset.tenant.display_name }}</strong> ·
+    Aplikacji: <strong>{{ dataset.applications | length }}</strong> ·
+    Tryb: <strong>{{ dataset.scan_context.auth_mode }}</strong> ·
+    Skan: <strong>{{ dataset.generated_at.isoformat() }}</strong>
+  </div>
+</header>
+
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ view.grade }}">
+    <span class="ag-grade-letter">{{ view.grade }}</span>
+    <span class="ag-grade-lbl">higiena aplikacji</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>Streszczenie — aplikacje</h2>
+    <p class="ag-exec-note">{{ view.grade_note }}
+      Uprawnienia app-only wys. ryzyka: <strong class="{{ 'critv' if view.high_risk_count }}">{{ view.high_risk_count }}</strong> ·
+      wygasłe poświadczenia: <strong class="{{ 'warnv' if view.expired_count }}">{{ view.expired_count }}</strong> ·
+      wygasające (30 dni): <strong>{{ view.expiring_count }}</strong> ·
+      bez właściciela: <strong class="{{ 'warnv' if view.no_owner_count }}">{{ view.no_owner_count }}</strong> ·
+      multi-tenant: <strong>{{ view.multi_tenant_count }}</strong>
+    </p>
+    {% if view.top_findings %}
+    <ul class="ag-top">
+      {% for t in view.top_findings %}
+      <li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <strong>{{ t.name }}</strong> — {{ t.headline }} <span class="muted">({{ t.score }} pkt)</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak aplikacji wysokiego ryzyka — dobra robota.</p>{% endif %}
+  </div>
+</section>
+
+<section class="ag-summary">
+  <div class="ag-card"><span class="ag-num">{{ view.app_total }}</span><span class="ag-lbl">Aplikacje</span></div>
+  <div class="ag-card crit"><span class="ag-num">{{ view.sev_counts['critical'] }}</span><span class="ag-lbl">Critical</span></div>
+  <div class="ag-card high"><span class="ag-num">{{ view.sev_counts['high'] }}</span><span class="ag-lbl">High</span></div>
+  <div class="ag-card {{ 'crit' if view.high_risk_count }}"><span class="ag-num">{{ view.high_risk_count }}</span><span class="ag-lbl">App-only wys. ryzyka</span></div>
+  <div class="ag-card {{ 'med' if view.expired_count }}"><span class="ag-num">{{ view.expired_count }}</span><span class="ag-lbl">Wygasłe sekrety</span></div>
+  <div class="ag-card"><span class="ag-num">{{ view.secret_total }}</span><span class="ag-lbl">Sekrety</span></div>
+  <div class="ag-card"><span class="ag-num">{{ view.cert_total }}</span><span class="ag-lbl">Certyfikaty</span></div>
+</section>
+
+<section>
+  <h2>Charakterystyka aplikacji</h2>
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>Najczęstsze uprawnienia wysokiego ryzyka (app-only)</h3>
+      {% if view.top_permissions %}
+      <table class="ag-table mini">
+        <thead><tr><th>Uprawnienie</th><th>Aplikacji</th></tr></thead>
+        <tbody>
+          {% for name, n in view.top_permissions %}
+          <tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">Brak uprzywilejowanych uprawnień aplikacyjnych.</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>Aplikacje z uprawnieniem wysokiego ryzyka</h3>
+      {% if view.high_risk_apps %}
+      <table class="ag-table mini">
+        <thead><tr><th>Aplikacja</th><th>Uprawnienia</th></tr></thead>
+        <tbody>
+          {% for a in view.high_risk_apps %}
+          <tr><td>{{ a.name }}</td><td>{{ a.perms }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">Żadna aplikacja nie ma uprawnień app-only wysokiego ryzyka.</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>Higiena poświadczeń i własności</h3>
+      <ul class="ag-list">
+        <li>Wygasłe poświadczenia: <strong class="{{ 'warnv' if view.expired_count }}">{{ view.expired_count }}</strong></li>
+        <li>Wygasające (≤30 dni): <strong>{{ view.expiring_count }}</strong></li>
+        <li>Bez właściciela: <strong class="{{ 'warnv' if view.no_owner_count }}">{{ view.no_owner_count }}</strong></li>
+        <li>Multi-tenant: <strong>{{ view.multi_tenant_count }}</strong></li>
+        <li>Sekrety / certyfikaty: <strong>{{ view.secret_total }}</strong> / <strong>{{ view.cert_total }}</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Aplikacje wg ryzyka <span class="muted">(kliknij aplikację, aby rozwinąć detale)</span></h2>
+  {% include '_filterbar.html.j2' %}
+  {% for a in dataset.applications %}
+  <details class="acct sev-{{ a.severity }}" id="obj-{{ a.id }}">
+    <summary>
+      <span class="badge {{ a.severity }}">{{ a.severity }}</span>
+      <span class="acct-score">{{ a.review_score }}</span>
+      <span class="acct-upn">{{ a.display_name }}</span>
+      {% if a.is_multi_tenant %}<span class="acct-tag">multi-tenant</span>{% endif %}
+      {% if a.account_enabled is false %}<span class="acct-tag">disabled</span>{% endif %}
+      <span class="acct-sig muted">
+        {%- if a.flags %}{{ a.flags[:2] | map(attribute='title') | join('; ') }}{% if a.flags|length > 2 %} (+{{ a.flags|length - 2 }}){% endif %}{% else %}brak sygnałów{% endif -%}
+      </span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">App ID</span><span class="v">{{ a.app_id or '—' }}</span></div>
+        <div><span class="k">signInAudience</span><span class="v">{{ a.sign_in_audience or '—' }}</span></div>
+        <div><span class="k">Wydawca</span><span class="v">{{ a.verified_publisher or a.publisher_domain or '— (niezweryfikowany)' }}</span></div>
+        <div><span class="k">Właściciele</span><span class="v">{% if a.owners %}{{ a.owners | join(', ') }}{% else %}—{% endif %}</span></div>
+        <div><span class="k">Utworzono</span><span class="v">{{ a.created_date_time.strftime('%Y-%m-%d') if a.created_date_time else '—' }}</span></div>
+        <div><span class="k">Ostatnie logowanie</span><span class="v">{{ a.last_sign_in_date_time.strftime('%Y-%m-%d') if a.last_sign_in_date_time else '—' }}</span></div>
+      </div>
+
+      {% if a.credentials %}
+      <div class="acct-activity">
+        <strong>Poświadczenia:</strong>
+        <table class="ag-table mini">
+          <thead><tr><th>Typ</th><th>Nazwa</th><th>Wygasa</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for c in a.credentials %}
+            <tr>
+              <td>{{ c.kind }}</td>
+              <td>{{ c.display_name or '—' }}</td>
+              <td>{{ c.end_date_time.strftime('%Y-%m-%d') if c.end_date_time else '—' }}</td>
+              <td class="{% if c.expired %}critv{% elif c.days_to_expiry is not none and c.days_to_expiry <= 30 %}warnv{% endif %}">
+                {% if c.expired %}WYGASŁY{% elif c.days_to_expiry is not none %}za {{ c.days_to_expiry }} dni{% else %}—{% endif %}
+                {%- if c.lifetime_days is not none %} <span class="muted">(życie {{ c.lifetime_days }} dni)</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="acct-activity muted">Brak poświadczeń (sekret/certyfikat) — aplikacja może używać federacji lub być nieaktywna.</div>
+      {% endif %}
+
+      {% if a.credential_events %}
+      <div class="acct-activity">
+        <strong>Zmiany poświadczeń (audit):</strong>
+        <table class="ag-table mini">
+          <thead><tr><th>Kiedy</th><th>Operacja</th><th>Kto</th></tr></thead>
+          <tbody>
+            {% for e in a.credential_events | sort(attribute='activity_date_time', reverse=true) %}
+            <tr>
+              <td>{{ e.activity_date_time.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ e.activity }}</td>
+              <td>{{ e.actor or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if a.permissions %}
+      <div class="acct-roles"><strong>Uprawnienia:</strong>
+        {% for p in a.permissions %}<span class="role {{ 'priv' if p.is_high_risk }}">{{ p.permission }} <span class="muted">({{ p.grant_type }})</span></span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if a.assigned_users %}
+      {% set assigned_groups = a.assigned_users | selectattr('type', 'equalto', 'group') | list %}
+      {% set assigned_people = a.assigned_users | rejectattr('type', 'equalto', 'group') | list %}
+      <details class="people">
+        <summary>Podpięci użytkownicy / grupy ({{ a.assigned_users|length }})</summary>
+
+        {% if assigned_people %}
+        <div class="people-grp"><strong>Użytkownicy / podmioty ({{ assigned_people|length }}):</strong>
+          <ul>
+            {% for u in assigned_people %}
+            <li>{{ u.display_name }}{% if u.user_principal_name %} <span class="muted">· {{ u.user_principal_name }}</span>{% endif %}
+              <span class="ptype via-{{ u.via }}">{{ 'przypisanie' if u.via == 'assignment' else 'zgoda' }}{% if u.type != 'user' %} · {{ u.type }}{% endif %}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if assigned_groups %}
+        <div class="people-grp"><strong>Grupy przypisane do aplikacji ({{ assigned_groups|length }}):</strong>
+          {% for g in assigned_groups %}
+          {% set grp = groups_by_id.get(g.id) %}
+          <details class="people nested">
+            <summary>{{ g.display_name }}{% if grp and grp.member_count is not none %} <span class="muted">({{ grp.member_count }} członków)</span>{% endif %}</summary>
+            {% if grp and grp.members %}
+            <ul>
+              {% for m in grp.members %}
+              <li>{{ m.display_name }}{% if m.user_principal_name %} <span class="muted">· {{ m.user_principal_name }}</span>{% endif %}{% if m.type != 'user' %}<span class="ptype">{{ m.type }}</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% if grp.member_count is not none and grp.member_count > grp.members|length %}
+            <p class="muted" style="margin-top:6px">… i {{ grp.member_count - grp.members|length }} więcej.</p>
+            {% endif %}
+            {% else %}<span class="muted">Lista członków tej grupy nie została pobrana (poza zakresem/limitem skanu grup).</span>{% endif %}
+          </details>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+      {% endif %}
+
+      <div class="acct-flags">
+        {% for f in a.flags %}
+        <div class="flag">
+          <span class="flag-title {{ f.severity }}">{{ f.title }} <span class="muted">[{{ f.points }} pkt]</span></span>
+          <span class="flag-ev">{{ f.evidence }}</span>
+          <span class="flag-rec">→ {{ f.recommendation }}</span>
+        </div>
+        {% else %}<span class="muted">Brak czerwonych flag — aplikacja czysta.</span>{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted">Brak aplikacji w datasecie (kolektor 'apps' nie był uruchomiony albo tenant ich nie ma).</p>
+  {% endfor %}
+</section>
+
+<section>
+  <h2>Rozkład aplikacji wg oceny</h2>
+  {{ sevbar('Aplikacje', view.app_total, view.sev_counts) }}
+</section>
+
+<footer class="ag-footer">
+  AccessGuy · moduł Aplikacje · Autor: Daniel „NewLife” Budyn · Wyrenderowano: {{ rendered_at }}
+  <br><span class="muted">Metodologia: rubryka scoringu w contracts/rules.yaml (sekcja appRules).</span>
+  <div class="ag-links"><a href="{{ linkedin }}">LinkedIn</a> · <a href="{{ github }}">GitHub</a></div>
+  <pre class="ag-tattoo" aria-label="Daniel NewLife Budyn">{{ tattoo_logo }}</pre>
+</footer>
+</body>
+</html>

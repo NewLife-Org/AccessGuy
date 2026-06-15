@@ -1,0 +1,223 @@
+{% from '_sevbar.html.j2' import sevbar %}<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AccessGuy — raport przeglądu uprawnień</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<header class="ag-header">
+  <pre class="ag-logo" aria-label="AccessGuy logo">{{ access_guy_logo }}
+{{ access_guy_text }}</pre>
+  <div class="ag-brand">AccessGuy</div>
+  <div class="ag-sub">Okresowy przegląd uprawnień Microsoft Entra ID</div>
+  <div class="ag-meta">
+    Tenant: <strong>{{ dataset.tenant.display_name }}</strong> ·
+    Kont: <strong>{{ dataset.accounts | length }}</strong> ·
+    Tryb: <strong>{{ dataset.scan_context.auth_mode }}</strong> ·
+    Skan: <strong>{{ dataset.generated_at.isoformat() }}</strong>
+  </div>
+</header>
+
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ community.grade }}">
+    <span class="ag-grade-letter">{{ community.grade }}</span>
+    <span class="ag-grade-lbl">ocena postawy</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>Streszczenie dla zarządu</h2>
+    <p class="ag-exec-note">{{ community.grade_note }}
+      Pokrycie MFA: <strong>{{ community.mfa_coverage if community.mfa_coverage is not none else '—' }}%</strong> ·
+      Global Admin: <strong>{{ community.global_admin_count }}</strong> ·
+      Uprzywilejowani bez MFA: <strong class="{{ 'warnv' if community.priv_no_mfa_count }}">{{ community.priv_no_mfa_count }}</strong> ·
+      Legacy auth (udane / z próbami): <strong class="{{ 'critv' if community.legacy_success_count }}">{{ community.legacy_success_count }}</strong> / <strong class="{{ 'warnv' if community.legacy_auth_count }}">{{ community.legacy_auth_count }}</strong> kont ·
+      Ryzykowne logowania: <strong class="{{ 'critv' if community.risky_count }}">{{ community.risky_count }}</strong>
+    </p>
+    {% if community.top_findings %}
+    <ul class="ag-top">
+      {% for t in community.top_findings %}
+      <li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <strong>{{ t.upn }}</strong> — {{ t.headline }} <span class="muted">({{ t.score }} pkt)</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak kont wysokiego ryzyka — dobra robota.</p>{% endif %}
+  </div>
+</section>
+
+<section class="ag-summary">
+  <div class="ag-card"><span class="ag-num">{{ cats['internal'] }}</span><span class="ag-lbl">Internal</span></div>
+  <div class="ag-card"><span class="ag-num">{{ cats['external'] }}</span><span class="ag-lbl">External</span></div>
+  <div class="ag-card"><span class="ag-num">{{ cats['guest'] }}</span><span class="ag-lbl">Guest</span></div>
+  <div class="ag-card crit"><span class="ag-num">{{ sevs['critical'] }}</span><span class="ag-lbl">Critical</span></div>
+  <div class="ag-card high"><span class="ag-num">{{ sevs['high'] }}</span><span class="ag-lbl">High</span></div>
+  <div class="ag-card med"><span class="ag-num">{{ sevs['medium'] }}</span><span class="ag-lbl">Medium</span></div>
+</section>
+
+{% if dataset.scan_context.warnings %}
+<section class="ag-warn">
+  <strong>Ostrzeżenia skanu:</strong>
+  <ul>{% for w in dataset.scan_context.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section>
+  <h2>Charakterystyka tenanta</h2>
+  <div class="ag-summary">
+    <div class="ag-card"><span class="ag-num">{{ community.account_total }}</span><span class="ag-lbl">Konta</span></div>
+    <div class="ag-card"><span class="ag-num" style="color:var(--good)">{{ community.active_count }}</span><span class="ag-lbl">Aktywne</span></div>
+    <div class="ag-card"><span class="ag-num" style="color:var(--muted)">{{ community.inactive_count }}</span><span class="ag-lbl">Nieaktywne</span></div>
+    <div class="ag-card"><span class="ag-num">{{ community.guest_count }}</span><span class="ag-lbl">Goście</span></div>
+    <div class="ag-card high"><span class="ag-num">{{ community.global_admin_count }}</span><span class="ag-lbl">Global Admin</span></div>
+    <div class="ag-card crit"><span class="ag-num">{{ community.no_mfa_count }}</span><span class="ag-lbl">Bez MFA</span></div>
+    <div class="ag-card"><span class="ag-num">{{ community.mfa_coverage if community.mfa_coverage is not none else '—' }}%</span><span class="ag-lbl">Pokrycie MFA</span></div>
+    <div class="ag-card {{ 'crit' if community.legacy_success_count else ('med' if community.legacy_auth_count) }}"><span class="ag-num">{{ community.legacy_success_count }}<span class="muted" style="font-size:16px"> / {{ community.legacy_auth_count }}</span></span><span class="ag-lbl">Legacy udane / próby</span></div>
+    <div class="ag-card"><span class="ag-num">{{ community.subscribed_skus | length }}</span><span class="ag-lbl">Licencje (typy)</span></div>
+  </div>
+
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>Licencje (subskrypcje M365)</h3>
+      {% if community.subscribed_skus %}
+      <table class="ag-table mini">
+        <thead><tr><th>Licencja</th><th class="num" title="Przypisane">Przyp.</th><th class="num" title="Wykupione">Wykup.</th></tr></thead>
+        <tbody>
+          {% for s in community.subscribed_skus %}
+          <tr><td>{{ s.name }} <span class="muted">({{ s.part }})</span></td><td class="num">{{ s.consumed }}</td><td class="num">{{ s.prepaid }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">Brak danych o licencjach (kolektor pominięty lub brak uprawnień).</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>10 ostatnio założonych kont</h3>
+      <table class="ag-table mini">
+        <thead><tr><th>UPN</th><th class="date">Utworzono</th></tr></thead>
+        <tbody>
+          {% for r in community.recent_accounts %}
+          <tr><td>{{ r.upn }}</td><td class="date muted">{{ r.created.strftime('%Y-%m-%d') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ag-box">
+      <h3>Konta uprzywilejowane (Global Admin)</h3>
+      {% if community.global_admins %}
+      <ul class="ag-list">{% for ga in community.global_admins %}<li>{{ ga }}</li>{% endfor %}</ul>
+      {% else %}<span class="muted">Nie wykryto kont z rolą Global Administrator.</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>Konta bez MFA <span class="muted">({{ community.no_mfa_count }})</span></h3>
+      {% if community.no_mfa_emails %}
+      <details><summary>Pokaż adresy ({{ community.no_mfa_count }})</summary>
+        <ul class="ag-list cols">{% for m in community.no_mfa_emails %}<li>{{ m }}</li>{% endfor %}</ul>
+      </details>
+      {% else %}<span class="muted">Wszystkie konta mają zarejestrowane MFA (albo brak danych).</span>{% endif %}
+    </div>
+
+    <div class="ag-box" style="grid-column:1/-1">
+      <h3>Legacy auth wg protokołu <span class="muted">(udane = realne ominięcie MFA; zablokowane = CA działa)</span></h3>
+      {% if community.legacy_breakdown %}
+      <table class="ag-table mini">
+        <thead><tr><th>Protokół (clientAppUsed)</th><th>Udane</th><th>Prób</th><th>Kont</th><th>Co to jest / czy akceptować</th></tr></thead>
+        <tbody>
+          {% for l in community.legacy_breakdown %}
+          <tr>
+            <td><strong>{{ l.client }}</strong></td>
+            <td class="num {{ 'legacy-yes' if l.success else 'legacy-no' }}">{{ l.success }}</td>
+            <td class="num">{{ l.count }}</td>
+            <td class="num">{{ l.accounts }}</td>
+            <td class="muted">{{ l.info }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted" style="margin-top:8px">Wskazówka: protokół z kolumną „Udane" = 0 oznacza, że próby były zablokowane (np. przez Conditional Access) — figurują w logu, ale nie są przejęciem. Skup się na wierszach z „Udane" &gt; 0.</p>
+      {% else %}<span class="muted">Brak logowań legacy auth w oknie obserwacji (albo brak danych signIns).</span>{% endif %}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Konta wg ryzyka <span class="muted">(kliknij konto, aby rozwinąć detale)</span></h2>
+  {% include '_filterbar.html.j2' %}
+  {% for a in dataset.accounts %}
+  <details class="acct sev-{{ a.severity }}" id="obj-{{ a.id }}">
+    <summary>
+      <span class="badge {{ a.severity }}">{{ a.severity }}</span>
+      <span class="acct-score">{{ a.review_score }}</span>
+      <span class="acct-upn">{{ a.user_principal_name }}</span>
+      <span class="acct-tag">{{ a.category }}</span>
+      <span class="acct-tag">{{ 'enabled' if a.account_enabled else 'disabled' }}</span>
+      <span class="acct-sig muted">
+        {%- if a.flags %}{{ a.flags[:2] | map(attribute='title') | join('; ') }}{% if a.flags|length > 2 %} (+{{ a.flags|length - 2 }}){% endif %}{% else %}brak sygnałów{% endif -%}
+      </span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">Nazwa</span><span class="v">{{ a.display_name }}</span></div>
+        <div><span class="k">Manager</span><span class="v">{{ a.manager or '—' }}</span></div>
+        <div><span class="k">Ostatnie logowanie</span><span class="v">{{ a.last_sign_in_date_time.strftime('%Y-%m-%d %H:%M') if a.last_sign_in_date_time else '—' }}</span></div>
+        <div><span class="k">Zmiana hasła</span><span class="v">{{ a.last_password_change_date_time.strftime('%Y-%m-%d') if a.last_password_change_date_time else '—' }}</span></div>
+        <div><span class="k">MFA</span><span class="v">{% if a.mfa_registered is none %}—{% elif a.mfa_registered %}tak{% else %}NIE{% endif %}</span></div>
+        <div><span class="k">Licencje</span><span class="v">{% if a.assigned_licenses %}{% for l in a.assigned_licenses %}{{ friendly_sku(l) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</span></div>
+        {% if a.risky_user %}
+        <div><span class="k">Identity Protection</span><span class="v critv">{{ a.risky_user.risk_state }} (poziom {{ a.risky_user.risk_level }}{% if a.risky_user.risk_last_updated_date_time %}, {{ a.risky_user.risk_last_updated_date_time.strftime('%Y-%m-%d') }}{% endif %})</span></div>
+        {% endif %}
+      </div>
+
+      {% if a.activity %}
+      <div class="acct-activity">
+        <strong>Aktywność (ostatnie {{ a.activity.window_days }} dni):</strong>
+        Logowań {{ a.activity.sign_in_count }} ·
+        nieudanych {{ a.activity.failed_sign_in_count }} ·
+        <span class="{{ 'warnv' if a.activity.night_sign_in_count else '' }}">nocnych {{ a.activity.night_sign_in_count }}</span> ·
+        <span class="{{ 'critv' if a.activity.risky_sign_in_count else '' }}">ryzykownych {{ a.activity.risky_sign_in_count }}</span> ·
+        <span class="{{ 'critv' if a.activity.legacy_success_count else ('warnv' if a.activity.legacy_auth_count else '') }}">legacy {{ a.activity.legacy_success_count }} udanych / {{ a.activity.legacy_auth_count }} prób</span>
+        {% if a.activity.last_sign_in_app %}· ostatnia akcja: <em>{{ a.activity.last_sign_in_app }}</em>{% endif %}
+        {% if a.activity.legacy_auth_clients %}
+        <div class="muted">Legacy wg protokołu: {% for c in a.activity.legacy_auth_clients %}<span class="{{ 'legacy-yes' if c.success_count else 'legacy-no' }}">{{ c.client_app }} ({{ c.success_count }}/{{ c.count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% endif %}
+        {% if a.activity.top_applications %}
+        <div class="muted">Najczęściej: {% for t in a.activity.top_applications %}{{ t.app_display_name }} ({{ t.count }}){% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if a.roles %}
+      <div class="acct-roles"><strong>Role:</strong>
+        {% for r in a.roles %}<span class="role {{ 'priv' if r.is_privileged }}">{{ r.role_name }} <span class="muted">({{ r.assignment_type }})</span></span>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="acct-flags">
+        {% for f in a.flags %}
+        <div class="flag">
+          <span class="flag-title {{ f.severity }}">{{ f.title }} <span class="muted">[{{ f.points }} pkt]</span></span>
+          <span class="flag-ev">{{ f.evidence }}</span>
+          <span class="flag-rec">→ {{ f.recommendation }}</span>
+        </div>
+        {% else %}<span class="muted">Brak czerwonych flag — konto czyste.</span>{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+</section>
+
+<section>
+  <h2>Rozkład kont wg oceny</h2>
+  {{ sevbar('Konta', dataset.accounts | length, sevs) }}
+</section>
+
+<footer class="ag-footer">
+  AccessGuy · Autor: Daniel „NewLife” Budyn · Wyrenderowano: {{ rendered_at }}
+  <br><span class="muted">Metodologia: rubryka scoringu w contracts/rules.yaml.</span>
+  <div class="ag-links">
+    <a href="{{ linkedin }}">LinkedIn</a> · <a href="{{ github }}">GitHub</a>
+  </div>
+  <pre class="ag-tattoo" aria-label="Daniel NewLife Budyn">{{ tattoo_logo }}</pre>
+</footer>
+</body>
+</html>

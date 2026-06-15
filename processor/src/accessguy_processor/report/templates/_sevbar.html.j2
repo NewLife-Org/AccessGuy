@@ -1,0 +1,18 @@
+{# Makro: poziomy pasek rozkładu severity + całkowita liczba obiektów.
+   Użycie: {% from '_sevbar.html.j2' import sevbar %} ... {{ sevbar('Grupy', total, sev_dict) }} #}
+{% macro sevbar(label, total, sev) %}
+<div class="sevbar-wrap">
+  <div class="sevbar-head"><span class="sevbar-label">{{ label }}</span><span class="sevbar-total">{{ total }}</span></div>
+  <div class="sevbar" title="critical {{ sev['critical'] }} · high {{ sev['high'] }} · medium {{ sev['medium'] }} · low {{ sev['low'] }} · info {{ sev['info'] }}">
+    {% for s in ['critical','high','medium','low','info'] %}
+      {% if sev[s] %}<span class="seg seg-{{ s }}" style="width:{{ (100.0 * sev[s] / total) if total else 0 }}%"></span>{% endif %}
+    {% endfor %}
+    {% if not total %}<span class="seg seg-empty" style="width:100%"></span>{% endif %}
+  </div>
+  <div class="sevbar-legend">
+    {% for s in ['critical','high','medium','low','info'] %}
+      <span class="lg"><i class="dot dot-{{ s }}"></i>{{ s }} <b>{{ sev[s] }}</b></span>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,195 @@
+{% from '_sevbar.html.j2' import sevbar %}<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AccessGuy — raport: Grupy</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<header class="ag-header">
+  <pre class="ag-logo" aria-label="AccessGuy logo">{{ access_guy_logo }}
+{{ access_guy_text }}</pre>
+  <div class="ag-brand">AccessGuy</div>
+  <div class="ag-sub">Przegląd uprawnień Microsoft Entra ID · moduł <strong>Grupy</strong></div>
+  <div class="ag-meta">
+    Tenant: <strong>{{ dataset.tenant.display_name }}</strong> ·
+    Grup: <strong>{{ dataset.groups | length }}</strong> ·
+    Tryb: <strong>{{ dataset.scan_context.auth_mode }}</strong> ·
+    Skan: <strong>{{ dataset.generated_at.isoformat() }}</strong>
+  </div>
+</header>
+
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ view.grade }}">
+    <span class="ag-grade-letter">{{ view.grade }}</span>
+    <span class="ag-grade-lbl">higiena grup</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>Streszczenie — grupy</h2>
+    <p class="ag-exec-note">{{ view.grade_note }}
+      Grupy nadające role uprzywilejowane: <strong class="{{ 'critv' if view.priv_group_count }}">{{ view.priv_group_count }}</strong> ·
+      role-assignable: <strong>{{ view.role_assignable_count }}</strong> ·
+      bez właściciela: <strong class="{{ 'warnv' if view.ownerless_count }}">{{ view.ownerless_count }}</strong> ·
+      dynamiczne: <strong>{{ view.dynamic_count }}</strong> ·
+      publiczne M365: <strong>{{ view.public_m365_count }}</strong>
+    </p>
+    {% if view.top_findings %}
+    <ul class="ag-top">
+      {% for t in view.top_findings %}
+      <li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <strong>{{ t.name }}</strong> — {{ t.headline }} <span class="muted">({{ t.score }} pkt)</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Brak grup wysokiego ryzyka — dobra robota.</p>{% endif %}
+  </div>
+</section>
+
+<section class="ag-summary">
+  <div class="ag-card"><span class="ag-num">{{ view.group_total }}</span><span class="ag-lbl">Grupy</span></div>
+  <div class="ag-card crit"><span class="ag-num">{{ view.sev_counts['critical'] }}</span><span class="ag-lbl">Critical</span></div>
+  <div class="ag-card high"><span class="ag-num">{{ view.sev_counts['high'] }}</span><span class="ag-lbl">High</span></div>
+  <div class="ag-card med"><span class="ag-num">{{ view.sev_counts['medium'] }}</span><span class="ag-lbl">Medium</span></div>
+  <div class="ag-card {{ 'crit' if view.priv_group_count }}"><span class="ag-num">{{ view.priv_group_count }}</span><span class="ag-lbl">Z rolą uprzywil.</span></div>
+  <div class="ag-card {{ 'high' if view.guest_group_count }}"><span class="ag-num">{{ view.guest_group_count }}</span><span class="ag-lbl">Z gośćmi</span></div>
+  <div class="ag-card"><span class="ag-num">{{ view.license_blast }}</span><span class="ag-lbl">Przypisań licencji</span></div>
+</section>
+
+<section>
+  <h2>Charakterystyka grup</h2>
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>Rodzaje grup</h3>
+      <table class="ag-table mini">
+        <tbody>
+          {% for k, n in view.kind_dist.items() %}
+          <tr><td>{{ k }}</td><td class="num">{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ag-box">
+      <h3>Role nadawane przez grupy</h3>
+      {% if view.roles_via_groups %}
+      <table class="ag-table mini">
+        <thead><tr><th>Rola</th><th>Grup</th></tr></thead>
+        <tbody>
+          {% for name, n in view.roles_via_groups %}
+          <tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">Żadna grupa nie nadaje ról katalogowych.</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>Grupy z rolą uprzywilejowaną</h3>
+      {% if view.priv_groups %}
+      <table class="ag-table mini">
+        <thead><tr><th>Grupa</th><th>Role</th><th>Członków</th></tr></thead>
+        <tbody>
+          {% for g in view.priv_groups %}
+          <tr><td>{{ g.name }}</td><td>{{ g.roles }}</td><td class="num">{{ g.members if g.members is not none else '?' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">Brak grup z rolą uprzywilejowaną.</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>Higiena</h3>
+      <ul class="ag-list">
+        <li>Bez właściciela: <strong class="{{ 'warnv' if view.ownerless_count }}">{{ view.ownerless_count }}</strong></li>
+        <li>Dynamiczne członkostwo: <strong>{{ view.dynamic_count }}</strong></li>
+        <li>Publiczne M365: <strong>{{ view.public_m365_count }}</strong></li>
+        <li>Przypisujące licencje: <strong>{{ view.license_group_count }}</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Grupy wg ryzyka <span class="muted">(kliknij grupę, aby rozwinąć detale)</span></h2>
+  {% include '_filterbar.html.j2' %}
+  {% for g in dataset.groups %}
+  <details class="acct sev-{{ g.severity }}" id="obj-{{ g.id }}">
+    <summary>
+      <span class="badge {{ g.severity }}">{{ g.severity }}</span>
+      <span class="acct-score">{{ g.review_score }}</span>
+      <span class="acct-upn">{{ g.display_name }}</span>
+      <span class="acct-tag">{{ g.group_kind }}</span>
+      <span class="acct-tag">{{ g.membership_type }}</span>
+      {% if g.is_assignable_to_role %}<span class="acct-tag" style="border-color:var(--high);color:var(--high)">role-assignable</span>{% endif %}
+      <span class="acct-sig muted">
+        {%- if g.flags %}{{ g.flags[:2] | map(attribute='title') | join('; ') }}{% if g.flags|length > 2 %} (+{{ g.flags|length - 2 }}){% endif %}{% else %}brak sygnałów{% endif -%}
+      </span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">Rodzaj</span><span class="v">{{ g.group_kind }}{% if g.visibility %} · {{ g.visibility }}{% endif %}</span></div>
+        <div><span class="k">Członkostwo</span><span class="v">{{ g.membership_type }}</span></div>
+        <div><span class="k">Członków / gości</span><span class="v">{{ g.member_count if g.member_count is not none else '?' }} / {{ g.guest_count if g.guest_count is not none else '?' }}</span></div>
+        <div><span class="k">Właściciele</span><span class="v">{% if g.owners %}{{ g.owners | join(', ') }}{% else %}—{% endif %}</span></div>
+        <div><span class="k">Utworzono</span><span class="v">{{ g.created_date_time.strftime('%Y-%m-%d') }}</span></div>
+        <div><span class="k">On-prem sync</span><span class="v">{% if g.on_premises_sync_enabled is none %}—{% elif g.on_premises_sync_enabled %}tak{% else %}nie{% endif %}</span></div>
+        <div><span class="k">Licencje</span><span class="v">{% if g.assigned_licenses %}{% for l in g.assigned_licenses %}{{ friendly_sku(l) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</span></div>
+        <div><span class="k">Mail</span><span class="v">{{ g.mail or '—' }}</span></div>
+      </div>
+
+      {% if g.membership_type == 'dynamic' and g.membership_rule %}
+      <div class="acct-activity"><strong>Reguła dynamiczna:</strong> <code>{{ g.membership_rule }}</code></div>
+      {% endif %}
+
+      {% if g.description %}<div class="acct-activity muted">{{ g.description }}</div>{% endif %}
+
+      {% if g.assigned_roles %}
+      <div class="acct-roles"><strong>Role przypisane do grupy:</strong>
+        {% for r in g.assigned_roles %}<span class="role {{ 'priv' if r.is_privileged }}">{{ r.role_name }} <span class="muted">({{ r.assignment_type }})</span></span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if g.members %}
+      <details class="people">
+        <summary>Członkowie ({{ g.member_count if g.member_count is not none else g.members|length }})</summary>
+        <ul>
+          {% for m in g.members %}
+          <li>{{ m.display_name }}{% if m.user_principal_name %} <span class="muted">· {{ m.user_principal_name }}</span>{% endif %}{% if m.type != 'user' %}<span class="ptype">{{ m.type }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if g.member_count is not none and g.member_count > g.members|length %}
+        <p class="muted" style="margin-top:6px">… i {{ g.member_count - g.members|length }} więcej (lista przycięta do {{ g.members|length }}).</p>
+        {% endif %}
+      </details>
+      {% elif g.member_count %}
+      <div class="acct-activity muted">Członków: {{ g.member_count }} (lista nie została pobrana).</div>
+      {% endif %}
+
+      <div class="acct-flags">
+        {% for f in g.flags %}
+        <div class="flag">
+          <span class="flag-title {{ f.severity }}">{{ f.title }} <span class="muted">[{{ f.points }} pkt]</span></span>
+          <span class="flag-ev">{{ f.evidence }}</span>
+          <span class="flag-rec">→ {{ f.recommendation }}</span>
+        </div>
+        {% else %}<span class="muted">Brak czerwonych flag — grupa czysta.</span>{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted">Brak grup w datasecie (kolektor 'groups' nie był uruchomiony albo tenant ich nie ma).</p>
+  {% endfor %}
+</section>
+
+<section>
+  <h2>Rozkład grup wg oceny</h2>
+  {{ sevbar('Grupy', view.group_total, view.sev_counts) }}
+</section>
+
+<footer class="ag-footer">
+  AccessGuy · moduł Grupy · Autor: Daniel „NewLife” Budyn · Wyrenderowano: {{ rendered_at }}
+  <br><span class="muted">Metodologia: rubryka scoringu w contracts/rules.yaml (sekcja groupRules).</span>
+  <div class="ag-links"><a href="{{ linkedin }}">LinkedIn</a> · <a href="{{ github }}">GitHub</a></div>
+  <pre class="ag-tattoo" aria-label="Daniel NewLife Budyn">{{ tattoo_logo }}</pre>
+</footer>
+</body>
+</html>

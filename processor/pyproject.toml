@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "accessguy-processor"
+version = "0.1.0"
+description = "AccessGuy — procesor: scoring + ładny raport z dataset.json (faza obróbki)."
+authors = [{ name = "Daniel \"NewLife\" Budyn" }]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.9",
+    "pyyaml>=6.0",
+    "jsonschema>=4.23",
+    "jinja2>=3.1",
+    "rich>=13.9",
+    "typer>=0.12",
+    # PDF opcjonalnie (osobny extra, bo weasyprint ma zależności systemowe):
+]
+
+[project.optional-dependencies]
+pdf = ["weasyprint>=63"]
+dev = ["pytest>=8.3", "ruff>=0.6", "mypy>=1.11", "types-PyYAML", "types-jsonschema"]
+
+[project.scripts]
+accessguy-processor = "accessguy_processor.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/accessguy_processor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

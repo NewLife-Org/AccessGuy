@@ -1,0 +1,364 @@
+{
+  "schemaVersion": "1.3",
+  "generatedAt": "2026-06-01T09:00:00Z",
+  "tenant": {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "displayName": "Contoso Sp. z o.o.",
+    "verifiedDomains": ["contoso.pl", "contoso.onmicrosoft.com"]
+  },
+  "scanContext": {
+    "scannerVersion": "0.1.0",
+    "authMode": "delegated",
+    "operator": "auditor@contoso.pl",
+    "collectorsRun": ["users", "roles", "apps", "authMethods", "audit", "signIns", "groups", "applications", "riskyUsers", "spSignIns", "caPolicies", "tenantPolicies"],
+    "premiumLicense": true,
+    "warnings": []
+  },
+  "accounts": [
+    {
+      "id": "a0000000-0000-0000-0000-000000000001",
+      "userPrincipalName": "jan.kowalski@contoso.pl",
+      "displayName": "Jan Kowalski",
+      "mail": "jan.kowalski@contoso.pl",
+      "category": "internal",
+      "accountEnabled": true,
+      "createdDateTime": "2021-03-10T08:00:00Z",
+      "lastSignInDateTime": "2026-05-30T14:00:00Z",
+      "lastNonInteractiveSignInDateTime": "2026-05-31T06:00:00Z",
+      "onPremisesSyncEnabled": false,
+      "externalUserState": null,
+      "externalUserStateChangeDateTime": null,
+      "assignedLicenses": ["SPE_E5"],
+      "mfaRegistered": true,
+      "manager": "anna.nowak@contoso.pl",
+      "lastPasswordChangeDateTime": "2026-04-01T08:00:00Z",
+      "activity": {
+        "windowDays": 30,
+        "signInCount": 24,
+        "failedSignInCount": 1,
+        "nightSignInCount": 0,
+        "riskySignInCount": 0,
+        "legacyAuthCount": 0,
+        "lastSignInApp": "Office 365 SharePoint Online",
+        "topApplications": [
+          { "appDisplayName": "Office 365 SharePoint Online", "count": 10 },
+          { "appDisplayName": "Microsoft Teams", "count": 8 }
+        ]
+      },
+      "roles": [],
+      "appGrants": []
+    },
+    {
+      "id": "a0000000-0000-0000-0000-000000000002",
+      "userPrincipalName": "admin.ext@partner.com",
+      "displayName": "Admin Partner",
+      "mail": "admin.ext@partner.com",
+      "category": "guest",
+      "accountEnabled": true,
+      "createdDateTime": "2025-01-15T08:00:00Z",
+      "lastSignInDateTime": null,
+      "lastNonInteractiveSignInDateTime": null,
+      "onPremisesSyncEnabled": false,
+      "externalUserState": "PendingAcceptance",
+      "externalUserStateChangeDateTime": "2025-01-15T08:00:00Z",
+      "assignedLicenses": ["ENTERPRISEPACK"],
+      "mfaRegistered": false,
+      "manager": null,
+      "lastPasswordChangeDateTime": null,
+      "activity": null,
+      "roles": [
+        {
+          "roleName": "Global Administrator",
+          "roleTemplateId": "62e90394-69f5-4237-9190-012177145e10",
+          "assignmentType": "permanent",
+          "isPrivileged": true,
+          "grantedDateTime": "2025-01-15T08:05:00Z",
+          "lastActivationDateTime": null,
+          "activationCount90d": 0
+        }
+      ],
+      "appGrants": []
+    },
+    {
+      "id": "a0000000-0000-0000-0000-000000000003",
+      "userPrincipalName": "stary.serwis@contoso.pl",
+      "displayName": "Stary Serwis",
+      "mail": null,
+      "category": "internal",
+      "accountEnabled": true,
+      "createdDateTime": "2019-06-01T08:00:00Z",
+      "lastSignInDateTime": "2025-09-01T10:00:00Z",
+      "lastNonInteractiveSignInDateTime": "2025-09-01T10:00:00Z",
+      "onPremisesSyncEnabled": true,
+      "externalUserState": null,
+      "externalUserStateChangeDateTime": null,
+      "assignedLicenses": ["ENTERPRISEPACK"],
+      "mfaRegistered": false,
+      "manager": null,
+      "lastPasswordChangeDateTime": "2019-06-01T08:00:00Z",
+      "activity": {
+        "windowDays": 30,
+        "signInCount": 3,
+        "failedSignInCount": 12,
+        "nightSignInCount": 2,
+        "riskySignInCount": 1,
+        "legacyAuthCount": 4,
+        "legacySuccessCount": 2,
+        "legacyAuthClients": [
+          { "clientApp": "IMAP4", "count": 3, "successCount": 2 },
+          { "clientApp": "Authenticated SMTP", "count": 1, "successCount": 0 }
+        ],
+        "lastSignInApp": "Azure Portal",
+        "topApplications": [
+          { "appDisplayName": "Azure Portal", "count": 3 }
+        ]
+      },
+      "roles": [
+        {
+          "roleName": "Security Administrator",
+          "roleTemplateId": "194ae4cb-b126-40b2-bd5b-6091b380977d",
+          "assignmentType": "eligible",
+          "isPrivileged": true,
+          "grantedDateTime": "2024-02-01T08:00:00Z",
+          "lastActivationDateTime": null,
+          "activationCount90d": 0
+        }
+      ],
+      "appGrants": [
+        {
+          "appDisplayName": "Random OAuth App",
+          "grantType": "delegated",
+          "scopes": ["Mail.ReadWrite", "User.Read"],
+          "isHighRisk": true
+        }
+      ],
+      "riskyUser": {
+        "riskLevel": "high",
+        "riskState": "atRisk",
+        "riskDetail": null,
+        "riskLastUpdatedDateTime": "2026-05-28T11:30:00Z"
+      }
+    }
+  ],
+  "servicePrincipals": [],
+  "subscribedSkus": [
+    { "skuPartNumber": "SPE_E5", "skuId": "c7df2760-2c81-4ef7-b578-5b5392b571df", "prepaidUnits": 50, "consumedUnits": 41 },
+    { "skuPartNumber": "ENTERPRISEPACK", "skuId": "6fd2c87f-b296-42f0-b197-1e91e994b900", "prepaidUnits": 100, "consumedUnits": 87 },
+    { "skuPartNumber": "AAD_PREMIUM_P2", "skuId": "84a661c4-e949-4bd2-a560-ed7766fcaf2b", "prepaidUnits": 25, "consumedUnits": 12 }
+  ],
+  "groups": [
+    {
+      "id": "g0000000-0000-0000-0000-000000000001",
+      "displayName": "Helpdesk Operators",
+      "description": "Operatorzy helpdesku z dostępem do resetu haseł.",
+      "mail": null,
+      "groupKind": "security",
+      "mailEnabled": false,
+      "securityEnabled": true,
+      "membershipType": "assigned",
+      "membershipRule": null,
+      "visibility": null,
+      "isAssignableToRole": true,
+      "onPremisesSyncEnabled": false,
+      "createdDateTime": "2023-05-01T08:00:00Z",
+      "renewedDateTime": null,
+      "memberCount": 25,
+      "guestCount": 1,
+      "ownerCount": 1,
+      "owners": ["anna.nowak@contoso.pl"],
+      "assignedRoles": [
+        { "roleName": "Helpdesk Administrator", "roleTemplateId": "729827e3-9c14-49f7-bb1b-9608f156bbb8", "assignmentType": "active", "isPrivileged": true }
+      ],
+      "assignedLicenses": [],
+      "members": [
+        { "id": "a0000000-0000-0000-0000-000000000001", "displayName": "Jan Kowalski", "userPrincipalName": "jan.kowalski@contoso.pl", "type": "user" },
+        { "id": "a0000000-0000-0000-0000-000000000002", "displayName": "Admin Partner", "userPrincipalName": "admin.ext@partner.com", "type": "user" },
+        { "id": "a0000000-0000-0000-0000-000000000003", "displayName": "Anna Nowak", "userPrincipalName": "anna.nowak@contoso.pl", "type": "user" }
+      ]
+    },
+    {
+      "id": "g0000000-0000-0000-0000-000000000002",
+      "displayName": "All Company",
+      "description": "Wszyscy pracownicy.",
+      "mail": "allcompany@contoso.pl",
+      "groupKind": "microsoft365",
+      "mailEnabled": true,
+      "securityEnabled": false,
+      "membershipType": "dynamic",
+      "membershipRule": "(user.accountEnabled -eq true) and (user.userType -eq \"Member\")",
+      "visibility": "Public",
+      "isAssignableToRole": false,
+      "onPremisesSyncEnabled": false,
+      "createdDateTime": "2022-01-10T08:00:00Z",
+      "renewedDateTime": "2024-01-10T08:00:00Z",
+      "memberCount": 120,
+      "guestCount": 0,
+      "ownerCount": 0,
+      "owners": [],
+      "assignedRoles": [],
+      "assignedLicenses": ["SPE_E5"],
+      "members": [
+        { "id": "a0000000-0000-0000-0000-000000000001", "displayName": "Jan Kowalski", "userPrincipalName": "jan.kowalski@contoso.pl", "type": "user" },
+        { "id": "a0000000-0000-0000-0000-000000000003", "displayName": "Anna Nowak", "userPrincipalName": "anna.nowak@contoso.pl", "type": "user" },
+        { "id": "g0000000-0000-0000-0000-000000000004", "displayName": "Marketing Team", "userPrincipalName": null, "type": "group" }
+      ]
+    },
+    {
+      "id": "g0000000-0000-0000-0000-000000000003",
+      "displayName": "E5 License Group",
+      "description": "Grupa do licencjonowania E5.",
+      "mail": null,
+      "groupKind": "security",
+      "mailEnabled": false,
+      "securityEnabled": true,
+      "membershipType": "assigned",
+      "membershipRule": null,
+      "visibility": null,
+      "isAssignableToRole": false,
+      "onPremisesSyncEnabled": false,
+      "createdDateTime": "2023-11-20T08:00:00Z",
+      "renewedDateTime": null,
+      "memberCount": 0,
+      "guestCount": 0,
+      "ownerCount": 1,
+      "owners": ["jan.kowalski@contoso.pl"],
+      "assignedRoles": [],
+      "assignedLicenses": ["SPE_E5"]
+    },
+    {
+      "id": "g0000000-0000-0000-0000-000000000004",
+      "displayName": "Marketing Team",
+      "description": "Zespół marketingu.",
+      "mail": "marketing@contoso.pl",
+      "groupKind": "microsoft365",
+      "mailEnabled": true,
+      "securityEnabled": false,
+      "membershipType": "assigned",
+      "membershipRule": null,
+      "visibility": "Private",
+      "isAssignableToRole": false,
+      "onPremisesSyncEnabled": false,
+      "createdDateTime": "2024-03-15T08:00:00Z",
+      "renewedDateTime": "2026-03-15T08:00:00Z",
+      "memberCount": 12,
+      "guestCount": 0,
+      "ownerCount": 2,
+      "owners": ["anna.nowak@contoso.pl", "jan.kowalski@contoso.pl"],
+      "assignedRoles": [],
+      "assignedLicenses": []
+    }
+  ],
+  "applications": [
+    {
+      "id": "ap000000-0000-0000-0000-000000000001",
+      "appId": "11110000-aaaa-bbbb-cccc-000000000001",
+      "displayName": "Backup Service",
+      "description": "Codzienny backup katalogu.",
+      "signInAudience": "AzureADMyOrg",
+      "publisherDomain": "contoso.pl",
+      "verifiedPublisher": null,
+      "accountEnabled": true,
+      "createdDateTime": "2022-08-01T08:00:00Z",
+      "lastSignInDateTime": "2026-05-30T02:00:00Z",
+      "owners": [],
+      "credentials": [
+        { "kind": "secret", "displayName": "rotacja-2024", "startDateTime": "2024-01-01T00:00:00Z", "endDateTime": "2025-01-01T00:00:00Z", "daysToExpiry": -516, "expired": true, "lifetimeDays": 366 }
+      ],
+      "permissions": [
+        { "resource": "Microsoft Graph", "permission": "Directory.ReadWrite.All", "grantType": "application", "isHighRisk": true },
+        { "resource": "Microsoft Graph", "permission": "User.Read.All", "grantType": "application", "isHighRisk": false }
+      ],
+      "credentialEvents": [
+        { "activity": "Update application – Certificates and secrets management", "actor": "jan.kowalski@contoso.pl", "activityDateTime": "2026-05-20T14:12:00Z" }
+      ]
+    },
+    {
+      "id": "ap000000-0000-0000-0000-000000000002",
+      "appId": "11110000-aaaa-bbbb-cccc-000000000002",
+      "displayName": "Reporting Connector",
+      "description": "Konektor BI (multi-tenant SaaS).",
+      "signInAudience": "AzureADMultipleOrgs",
+      "publisherDomain": "vendor.example",
+      "verifiedPublisher": "Example Vendor Sp. z o.o.",
+      "accountEnabled": true,
+      "createdDateTime": "2025-02-01T08:00:00Z",
+      "lastSignInDateTime": "2026-05-31T09:00:00Z",
+      "owners": ["jan.kowalski@contoso.pl"],
+      "credentials": [
+        { "kind": "secret", "displayName": "primary", "startDateTime": "2025-06-16T00:00:00Z", "endDateTime": "2026-06-16T00:00:00Z", "daysToExpiry": 15, "expired": false, "lifetimeDays": 365 }
+      ],
+      "permissions": [
+        { "resource": "Microsoft Graph", "permission": "Directory.Read.All", "grantType": "application", "isHighRisk": false },
+        { "resource": "Microsoft Graph", "permission": "User.Read.All", "grantType": "application", "isHighRisk": false }
+      ],
+      "assignedUsers": [
+        { "id": "a0000000-0000-0000-0000-000000000001", "displayName": "Jan Kowalski", "userPrincipalName": "jan.kowalski@contoso.pl", "type": "user", "via": "consent" },
+        { "id": "a0000000-0000-0000-0000-000000000003", "displayName": "Anna Nowak", "userPrincipalName": "anna.nowak@contoso.pl", "type": "user", "via": "assignment" },
+        { "id": "g0000000-0000-0000-0000-000000000001", "displayName": "Helpdesk Operators", "userPrincipalName": null, "type": "group", "via": "assignment" }
+      ]
+    },
+    {
+      "id": "ap000000-0000-0000-0000-000000000003",
+      "appId": "11110000-aaaa-bbbb-cccc-000000000003",
+      "displayName": "Legacy Sync",
+      "description": "Stara integracja HR.",
+      "signInAudience": "AzureADMyOrg",
+      "publisherDomain": "contoso.pl",
+      "verifiedPublisher": null,
+      "accountEnabled": true,
+      "createdDateTime": "2020-04-01T08:00:00Z",
+      "lastSignInDateTime": null,
+      "owners": ["anna.nowak@contoso.pl"],
+      "credentials": [
+        { "kind": "secret", "displayName": "long-lived", "startDateTime": "2024-07-01T00:00:00Z", "endDateTime": "2027-07-01T00:00:00Z", "daysToExpiry": 395, "expired": false, "lifetimeDays": 1095 },
+        { "kind": "secret", "displayName": "backup-key", "startDateTime": "2025-01-01T00:00:00Z", "endDateTime": "2027-01-01T00:00:00Z", "daysToExpiry": 214, "expired": false, "lifetimeDays": 730 },
+        { "kind": "secret", "displayName": "temp-2024", "startDateTime": "2024-01-01T00:00:00Z", "endDateTime": "2025-01-01T00:00:00Z", "daysToExpiry": -516, "expired": true, "lifetimeDays": 366 },
+        { "kind": "secret", "displayName": "extra-key", "startDateTime": "2025-03-01T00:00:00Z", "endDateTime": "2027-03-01T00:00:00Z", "daysToExpiry": 273, "expired": false, "lifetimeDays": 730 }
+      ],
+      "permissions": [
+        { "resource": "Microsoft Graph", "permission": "User.Read.All", "grantType": "application", "isHighRisk": false }
+      ]
+    }
+  ],
+  "caPolicies": [
+    {
+      "id": "ca000000-0000-0000-0000-000000000001",
+      "displayName": "Require MFA for all users",
+      "state": "enabled",
+      "requiresMfa": true,
+      "blocksLegacyAuth": false,
+      "clientAppTypes": ["all"],
+      "includeUsers": ["All"],
+      "excludeUsers": ["a0000000-0000-0000-0000-000000000002"],
+      "includeGroups": [],
+      "excludeGroups": [],
+      "includeRoles": [],
+      "excludeRoles": [],
+      "grantControls": ["mfa"],
+      "modifiedDateTime": "2025-11-02T10:00:00Z"
+    },
+    {
+      "id": "ca000000-0000-0000-0000-000000000002",
+      "displayName": "Block legacy authentication",
+      "state": "enabledForReportingButNotEnforced",
+      "requiresMfa": false,
+      "blocksLegacyAuth": true,
+      "clientAppTypes": ["exchangeActiveSync", "other"],
+      "includeUsers": ["All"],
+      "excludeUsers": [],
+      "includeGroups": [],
+      "excludeGroups": [],
+      "includeRoles": [],
+      "excludeRoles": [],
+      "grantControls": ["block"],
+      "modifiedDateTime": "2026-01-15T09:00:00Z"
+    }
+  ],
+  "tenantPolicies": {
+    "securityDefaultsEnabled": false,
+    "usersCanConsentToApps": true,
+    "usersCanRegisterApps": true,
+    "guestUserAccess": "limited",
+    "weakAuthMethodsEnabled": ["Sms"]
+  }
+}

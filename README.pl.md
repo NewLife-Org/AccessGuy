@@ -18,13 +18,20 @@
                                              -  =+
 ```
 
-# AccessGuy
+# AccessGuy — Read-only tool pod audyt uprawnień Microsoft Entra ID (Azure AD)
 
 🌐 **Polski** · [English](README.md)
 
-**Read-only audyt uprawnień Microsoft Entra ID — od jednego logowania do raportu dla zarządu.**
-Autor: **Daniel „NewLife" Budyn**
+**AccessGuy to read-only narzędzie do przeglądu uprawnień Microsoft Entra ID (Azure AD).** Łączy się
+raz (tylko odczyt), inwentaryzuje użytkowników, grupy i aplikacje i punktuje ryzyko — braki MFA, 
+konta uprzywilejowane bez MFA, legacy auth, ryzykowne logowania, stałe role poza PIM, pokrycie
+Conditional Access i nadmiarowe uprawnienia aplikacji — w czytelny **raport postawy A–F** pod
+przeglądy i audyty dostępu (ISO 27001 / NIS2).
 
+Autor: **Daniel „NewLife" Budyn**
+- LinkedIn: https://www.linkedin.com/in/daniel-b-4295a421a/
+- GitHub: https://github.com/NewLife-Org/AccessGuy
+- YouTube: https://www.youtube.com/@NewLife-org-pl
 ---
 
 ## ▶ Szybki start (uruchom to)
@@ -173,15 +180,6 @@ scanner/                  ← faza SKAN (PowerShell): Invoke-AccessGuyScan.ps1 +
 processor/                ← faza RAPORT (Python): src/accessguy_processor/ + testy
 contracts/                ← kontrakt: dataset.schema.json + rules.yaml + sample
 ```
-
----
-
-## Kontakt
-
-**Daniel „NewLife" Budyn**
-- LinkedIn: https://www.linkedin.com/in/daniel-b-4295a421a/
-- GitHub: https://github.com/NewLife-Org/AccessGuy
-- YouTube: https://www.youtube.com/@NewLife-org-pl
 
 ---
 

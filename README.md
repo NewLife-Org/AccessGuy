@@ -29,7 +29,9 @@ Access coverage and over-privileged app permissions — into a clear **A–F pos
 ISO 27001 / NIS2 access reviews and audits.
 
 Author: **Daniel „NewLife" Budyn**
-
+- LinkedIn: https://www.linkedin.com/in/daniel-b-4295a421a/
+- GitHub: https://github.com/NewLife-Org/AccessGuy
+- YouTube: https://www.youtube.com/@NewLife-org-pl
 ---
 
 ## ▶ Quick start (just run it)
@@ -179,14 +181,6 @@ processor/                ← REPORT phase (Python): src/accessguy_processor/ + 
 contracts/                ← contract: dataset.schema.json + rules.yaml + sample
 ```
 
----
-
-## Contact
-
-**Daniel „NewLife" Budyn**
-- LinkedIn: https://www.linkedin.com/in/daniel-b-4295a421a/
-- GitHub: https://github.com/NewLife-Org/AccessGuy
-- YouTube: https://www.youtube.com/@NewLife-org-pl
 
 ---
 

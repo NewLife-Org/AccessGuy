@@ -18,11 +18,16 @@
                                              -  =+
 ```
 
-# AccessGuy
+# AccessGuy — Read-only Microsoft Entra ID (Azure AD) Access Review
 
 🌐 **English** · [Polski](README.pl.md)
 
 **Read-only Microsoft Entra ID access review — from a single sign-in to a board-ready report.**
+It connects once (read-only), inventories users, groups and applications, and scores risk — MFA gaps, privileged
+roles without MFA, legacy authentication, risky sign-ins, standing roles outside PIM, Conditional
+Access coverage and over-privileged app permissions — into a clear **A–F posture report** for
+ISO 27001 / NIS2 access reviews and audits.
+
 Author: **Daniel „NewLife" Budyn**
 
 ---

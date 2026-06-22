@@ -15,11 +15,11 @@ function Invoke-AgCollector {
         [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[string]]$Warnings
     )
     try {
-        Write-AgLog -Level INFO -Message "Kolektor: $Name ..."
+        Write-AgConnector -Name $Name
         return & $Body
     }
     catch {
-        $msg = "Kolektor '$Name' nieudany: $($_.Exception.Message)"
+        $msg = (T 'col.failed') -f $Name, $_.Exception.Message
         Write-AgLog -Level WARN -Message $msg
         $Warnings.Add($msg)
         return @()
@@ -141,6 +141,12 @@ function Get-AgGroups {
                 $g['__guestCount']  = Get-AgCount -Uri "/groups/$id/members/microsoft.graph.user/`$count?`$filter=userType eq 'Guest'"
                 # Konkretni członkowie (do MemberCap) — userType pozwala odróżnić gości; @odata.type rodzaj principala.
                 $g['__members'] = @(Invoke-AgGraphPaged -Uri "/groups/$id/members?`$select=id,displayName,userPrincipalName,userType&`$top=999" -MaxItems $MemberCap)
+                # owners z $expand też ucięte do 20 (limit Graph na rozwijanych kolekcjach) —
+                # dociągamy pełną listę, gdy trafiamy w cap, by ownerCount/owners były prawdziwe.
+                if (@(Get-AgProp $g 'owners').Count -ge 20) {
+                    try { $g['owners'] = @(Invoke-AgGraphPaged -Uri "/groups/$id/owners?`$select=id,displayName,userPrincipalName&`$top=999" -MaxItems 500) }
+                    catch { $Warnings.Add("groups/owners ${id}: $($_.Exception.Message)") }
+                }
             }
         }
         else {
@@ -186,6 +192,21 @@ function Get-AgApps {
         }
         catch {
             $Warnings.Add("apps/applications: $($_.Exception.Message)")
+        }
+
+        # $expand=owners zwraca max 20 (limit Graph na rozwijanych kolekcjach). Gdy trafiamy w cap,
+        # dociągamy pełną listę właścicieli osobnym, stronicowanym GET-em — app_priv_owner_weak
+        # ma widzieć WSZYSTKICH ownerów (a nie tylko pierwszych 20).
+        foreach ($a in @($applications)) {
+            if (-not ($a -is [System.Collections.IDictionary])) { continue }
+            $ow = @(Get-AgProp $a 'owners')
+            if ($ow.Count -lt 20) { continue }
+            $aid = [string](Get-AgProp $a 'id'); if (-not $aid) { continue }
+            try {
+                $full = @(Invoke-AgGraphPaged -Uri "/applications/$aid/owners?`$select=id,displayName,userPrincipalName&`$top=999" -MaxItems 500)
+                if ($full.Count -gt $ow.Count) { $a['owners'] = $full }
+            }
+            catch { $Warnings.Add("apps/owners ${aid}: $($_.Exception.Message)") }
         }
 
         [pscustomobject]@{ servicePrincipals = $sps; oauth2Grants = $grants; applications = $applications }

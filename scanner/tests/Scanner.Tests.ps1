@@ -161,7 +161,7 @@ Describe 'Build-AgDataset' {
             -Users $users -Roles $roles -Apps $apps -Mfa $mfa -Audit $audit `
             -CollectorsRun @('users','roles','apps','authMethods','audit') -Warnings $w
 
-        $ds.schemaVersion | Should -Be '1.3'
+        $ds.schemaVersion | Should -Be '1.4'
         $ds.tenant.displayName | Should -Be 'Test Tenant'
         $ds.accounts.Count | Should -Be 2
         $ds.scanContext.authMode | Should -Be 'delegated'
@@ -184,6 +184,33 @@ Describe 'Build-AgDataset' {
         $jan.assignedLicenses | Should -Contain 'SPE_E5'      # GUID -> partNumber
         $jan.mfaRegistered | Should -BeTrue
         $jan.appGrants[0].isHighRisk | Should -BeTrue          # Mail.ReadWrite
+    }
+
+    It 'normalizuje Conditional Access: zakres aplikacji (1.4) + requiresMfa/wykluczenia' {
+        $w = [System.Collections.Generic.List[string]]::new()
+        $rawPol = @{
+            id            = 'ca-1'
+            displayName   = 'MFA for one app'
+            state         = 'enabled'
+            conditions    = @{
+                users        = @{ includeUsers = @('All'); excludeUsers = @('u-2') }
+                applications = @{ includeApplications = @('app-123'); excludeApplications = @() }
+                clientAppTypes = @('all')
+            }
+            grantControls = @{ builtInControls = @('mfa') }
+        }
+        $ds = Build-AgDataset -ScannerVersion '0.1.0' -AuthMode 'delegated' -Operator 'op@contoso.pl' `
+            -PremiumLicense $true -VerifiedDomains @('contoso.pl') `
+            -Users (Get-AgUsers -PremiumLicense -Warnings $w) -Roles (Get-AgRoles -Warnings $w) `
+            -Apps (Get-AgApps -Warnings $w) -Mfa (Get-AgAuthMethods -Warnings $w) -Audit (Get-AgAudit -Warnings $w) `
+            -CaPolicies @($rawPol) -CollectorsRun @('users','caPolicies') -Warnings $w
+
+        $pol = $ds.caPolicies[0]
+        $pol.requiresMfa | Should -BeTrue
+        $pol.includeApplications | Should -Contain 'app-123'    # zakres aplikacji (1.4)
+        @($pol.excludeApplications).Count | Should -Be 0
+        $pol.includeUsers | Should -Contain 'All'
+        $pol.excludeUsers | Should -Contain 'u-2'
     }
 }
 

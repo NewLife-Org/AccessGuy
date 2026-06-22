@@ -7,7 +7,6 @@ name = "accessguy-processor"
 version = "0.1.0"
 description = "AccessGuy — procesor: scoring + ładny raport z dataset.json (faza obróbki)."
 authors = [{ name = "Daniel \"NewLife\" Budyn" }]
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.9",

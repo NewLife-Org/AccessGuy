@@ -1,9 +1,9 @@
 {% from '_sevbar.html.j2' import sevbar %}<!doctype html>
-<html lang="pl">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AccessGuy — streszczenie dla zarządu</title>
+<title>{{ tr('tmpl.sum.html_title') }}</title>
 <style>{{ css }}</style>
 </head>
 <body>
@@ -11,188 +11,21 @@
   <pre class="ag-logo" aria-label="AccessGuy logo">{{ access_guy_logo }}
 {{ access_guy_text }}</pre>
   <div class="ag-brand">AccessGuy</div>
-  <div class="ag-sub">Okresowy przegląd uprawnień Microsoft Entra ID · <strong>streszczenie dla zarządu</strong></div>
+  <div class="ag-sub">{{ tr('tmpl.brand.sub') }} · <strong>{{ tr('tmpl.sum.brand_strong') }}</strong></div>
   <div class="ag-meta">
-    Tenant: <strong>{{ dataset.tenant.display_name }}</strong> ·
-    Tryb: <strong>{{ dataset.scan_context.auth_mode }}</strong> ·
-    Skan: <strong>{{ dataset.generated_at.isoformat() }}</strong> ·
-    Zakres: <strong>{{ dataset.scan_context.collectors_run | join(', ') }}</strong>
+    {{ tr('tmpl.meta.tenant') }}: <strong>{{ dataset.tenant.display_name }}</strong> ·
+    {{ tr('tmpl.meta.mode') }}: <strong>{{ dataset.scan_context.auth_mode }}</strong> ·
+    {{ tr('tmpl.meta.scan') }}: <strong>{{ dataset.generated_at.isoformat() }}</strong> ·
+    {{ tr('tmpl.meta.scope') }}: <strong>{{ dataset.scan_context.collectors_run | join(', ') }}</strong>
   </div>
 </header>
 
-<section class="ag-exec">
-  <div class="ag-grade grade-{{ overview.grade }}">
-    <span class="ag-grade-letter">{{ overview.grade }}</span>
-    <span class="ag-grade-lbl">postawa łączna</span>
-  </div>
-  <div class="ag-exec-body">
-    <h2>Ocena postawy tenanta</h2>
-    <p class="ag-exec-note">{{ overview.grade_note }}
-      Łącznie: <strong class="critv">{{ overview.combined_sev['critical'] }}</strong> critical ·
-      <strong class="warnv">{{ overview.combined_sev['high'] }}</strong> high ·
-      {{ overview.combined_sev['medium'] }} medium.
-      Potencjalnych ścieżek eskalacji: <strong class="{{ 'critv' if overview.escalation_paths }}">{{ overview.escalation_paths }}</strong>.
-    </p>
-    {% if overview.insights %}
-    <ul class="ag-top">
-      {% for ins in overview.insights %}<li>⚠ {{ ins }}</li>{% endfor %}
-    </ul>
-    {% else %}<p class="muted">Brak istotnych spostrzeżeń ryzyka — bardzo dobra higiena.</p>{% endif %}
-  </div>
-</section>
-
-{% if posture %}
-<section>
-  <h2>Konfiguracja tenanta — dlaczego te ryzyka w ogóle występują</h2>
-  <p class="muted" style="margin:4px 0 14px">Conditional Access i polityki tenanta (schema 1.3).
-    Luka w konfiguracji tłumaczy objawy widoczne w modułach — np. udane legacy auth bierze się z braku polityki blokującej.</p>
-  <div class="ag-grid">
-    {% if posture.ca_collected %}
-    <div class="ag-box">
-      <h3>Conditional Access</h3>
-      <div class="ag-meta">Polityk: <strong>{{ posture.ca_total }}</strong> ·
-        włączonych: <strong>{{ posture.ca_enabled }}</strong> ·
-        report-only: <strong class="{{ 'warnv' if posture.ca_report_only }}">{{ posture.ca_report_only }}</strong></div>
-      <p>Wymagających MFA: <strong class="{{ 'critv' if not posture.ca_mfa_policies }}">{{ posture.ca_mfa_policies }}</strong> ·
-        blokujących legacy auth: <strong class="{{ 'critv' if not posture.ca_legacy_block }}">{{ posture.ca_legacy_block }}</strong></p>
-      <p>Kont wykluczonych z MFA: <strong class="{{ 'critv' if posture.mfa_excluded_count }}">{{ posture.mfa_excluded_count }}</strong> ·
-        kont z nieobsłużonym ryzykiem (Identity Protection): <strong class="{{ 'critv' if posture.risky_user_count }}">{{ posture.risky_user_count }}</strong></p>
-    </div>
-    {% endif %}
-    {% if posture.tenant_policies %}
-    <div class="ag-box">
-      <h3>Polityki tenanta</h3>
-      {% set tp = posture.tenant_policies %}
-      <p>Security defaults: <strong>{{ 'włączone' if tp.security_defaults_enabled else ('wyłączone' if tp.security_defaults_enabled is false else '—') }}</strong></p>
-      <p>Zgody użytkowników na aplikacje: <strong class="{{ 'warnv' if tp.users_can_consent_to_apps }}">{{ 'dozwolone' if tp.users_can_consent_to_apps else ('zablokowane' if tp.users_can_consent_to_apps is false else '—') }}</strong></p>
-      <p>Rejestracja aplikacji przez użytkowników: <strong>{{ 'dozwolona' if tp.users_can_register_apps else ('zablokowana' if tp.users_can_register_apps is false else '—') }}</strong></p>
-      <p>Dostęp gości do katalogu: <strong>{{ tp.guest_user_access or '—' }}</strong>
-        {% if tp.weak_auth_methods_enabled %} · słabe metody MFA: <strong class="warnv">{{ tp.weak_auth_methods_enabled | join(', ') }}</strong>{% endif %}</p>
-    </div>
-    {% endif %}
-  </div>
-  {% if posture.findings %}
-  <ul class="ag-top" style="margin-top:12px">
-    {% for f in posture.findings %}
-    <li><span class="badge {{ f.severity }}">{{ f.severity }}</span> {{ f.text }}</li>
-    {% endfor %}
-  </ul>
-  {% else %}<p class="muted">Konfiguracja bez zastrzeżeń — MFA wymuszone, legacy zablokowane, zgody pod kontrolą.</p>{% endif %}
-</section>
-{% endif %}
-
-{% if escalation_paths %}
-<section>
-  <h2>Ścieżki eskalacji — konkretne łańcuchy do przejęcia tenanta</h2>
-  <p class="muted" style="margin:4px 0 14px">Korelacja tożsamości, grup i aplikacji z logami sign-in.
-    Każdy łańcuch to realna droga od słabo chronionego konta do uprawnień uprzywilejowanych — z dowodem z logów.</p>
-  <div class="ag-chains">
-    {% for p in escalation_paths %}
-    <div class="ag-chain sev-{{ p.severity }}">
-      <div class="ag-chain-head"><span class="badge {{ p.severity }}">{{ p.severity }}</span> <strong>{{ p.title }}</strong></div>
-      <div class="ag-chain-flow">
-        {% for s in p.steps %}<span class="ag-chain-step">{{ s }}</span>{% if not loop.last %}<span class="ag-chain-arrow">→</span>{% endif %}{% endfor %}
-      </div>
-      <div class="ag-chain-ev muted">Dowód z logów: {{ p.evidence }}</div>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-{% if action_plan %}
-<section>
-  <h2>Plan działań — od czego zacząć</h2>
-  <p class="muted" style="margin:4px 0 14px">Wszystkie ustalenia z trzech modułów zagregowane w listę zadań.
-    Kolejność = priorytet (waga ryzyka × skala w tym tenancie). Przykłady prowadzą do konkretnych kart w raportach szczegółowych.</p>
-  <ol class="ag-plan">
-    {% for step in action_plan %}
-    <li class="ag-plan-step sev-{{ step.severity }}">
-      <div class="ag-plan-head">
-        <span class="badge {{ step.severity }}">{{ step.severity }}</span>
-        <strong>{{ step.title }}</strong>
-        <span class="acct-tag">{{ step.module }}</span>
-        <span class="ag-plan-count">{{ step.count }} obiekt{% if step.count == 1 %}{% elif step.count in (2,3,4) %}y{% else %}ów{% endif %} · {{ step.points }} pkt</span>
-      </div>
-      <div class="ag-plan-rec">→ {{ step.recommendation }}</div>
-      <div class="ag-plan-ex muted">Np.:
-        {% for ex in step.examples %}<a class="ag-link" href="{{ links[step.module_key] }}#obj-{{ ex.id }}">{{ ex.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
-        {%- if step.count > step.examples|length %} … (+{{ step.count - step.examples|length }}){% endif %}
-      </div>
-    </li>
-    {% endfor %}
-  </ol>
-</section>
-{% endif %}
-
-<section>
-  <h2>Moduły przeglądu</h2>
-  <div class="ag-grid">
-    {% for m in overview.modules %}
-    <div class="ag-box">
-      <h3>{{ m.label }}
-        <span class="ag-grade-inline grade-{{ m.grade }}">{{ m.grade }}</span>
-      </h3>
-      <div class="ag-meta">Obiektów: <strong>{{ m.total }}</strong></div>
-      <p>
-        <span class="badge critical">{{ m.sev['critical'] }}</span>
-        <span class="badge high">{{ m.sev['high'] }}</span>
-        <span class="badge medium">{{ m.sev['medium'] }}</span>
-        <span class="badge low">{{ m.sev['low'] }}</span>
-      </p>
-      <p class="muted">Główny sygnał: {{ m.headline }}</p>
-      {% if m.key == 'users' %}<a class="ag-btn" href="{{ links.users }}">Raport: Konta →</a>{% endif %}
-      {% if m.key == 'groups' %}<a class="ag-btn" href="{{ links.groups }}">Raport: Grupy →</a>{% endif %}
-      {% if m.key == 'apps' %}<a class="ag-btn" href="{{ links.apps }}">Raport: Aplikacje →</a>{% endif %}
-    </div>
-    {% endfor %}
-  </div>
-</section>
-
-<section>
-  <h2>Rozkład wg oceny (wszystkie moduły)</h2>
-  <div class="ag-grid">
-    <div class="ag-box">{{ sevbar('Konta', community.account_total, community.sev_counts) }}</div>
-    <div class="ag-box">{{ sevbar('Grupy', groups_view.group_total, groups_view.sev_counts) }}</div>
-    <div class="ag-box">{{ sevbar('Aplikacje', apps_view.app_total, apps_view.sev_counts) }}</div>
-  </div>
-</section>
-
-<section>
-  <h2>Najważniejsze ustalenia (wszystkie moduły)</h2>
-  <div class="ag-grid">
-    <div class="ag-box">
-      <h3>Konta</h3>
-      {% if community.top_findings %}
-      <ul class="ag-top">{% for t in community.top_findings %}<li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <a class="ag-link" href="{{ links.users }}#obj-{{ t.id }}"><strong>{{ t.upn }}</strong></a> — {{ t.headline }}</li>{% endfor %}</ul>
-      {% else %}<span class="muted">Brak.</span>{% endif %}
-    </div>
-    <div class="ag-box">
-      <h3>Grupy</h3>
-      {% if groups_view.top_findings %}
-      <ul class="ag-top">{% for t in groups_view.top_findings %}<li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <a class="ag-link" href="{{ links.groups }}#obj-{{ t.id }}"><strong>{{ t.name }}</strong></a> — {{ t.headline }}</li>{% endfor %}</ul>
-      {% else %}<span class="muted">Brak.</span>{% endif %}
-    </div>
-    <div class="ag-box">
-      <h3>Aplikacje</h3>
-      {% if apps_view.top_findings %}
-      <ul class="ag-top">{% for t in apps_view.top_findings %}<li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <a class="ag-link" href="{{ links.apps }}#obj-{{ t.id }}"><strong>{{ t.name }}</strong></a> — {{ t.headline }}</li>{% endfor %}</ul>
-      {% else %}<span class="muted">Brak.</span>{% endif %}
-    </div>
-  </div>
-</section>
-
-{% if dataset.scan_context.warnings %}
-<section class="ag-warn">
-  <strong>Ostrzeżenia skanu:</strong>
-  <ul>{% for w in dataset.scan_context.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
-</section>
-{% endif %}
+{% include '_summary_body.html.j2' %}
 
 <footer class="ag-footer">
-  AccessGuy · streszczenie · Autor: Daniel „NewLife” Budyn · Wyrenderowano: {{ rendered_at }}
-  <br><span class="muted">Ocena to heurystyka pomocnicza, nie norma zgodności. Metodologia: contracts/rules.yaml.</span>
-  <div class="ag-links"><a href="{{ linkedin }}">LinkedIn</a> · <a href="{{ github }}">GitHub</a></div>
+  AccessGuy · {{ tr('tmpl.footer.role.summary') }} · {{ tr('tmpl.footer.author_rendered', at=rendered_at) }}
+  <br><span class="muted">{{ tr('tmpl.footer.disclaimer') }}</span>
+  <div class="ag-links"><a href="{{ linkedin }}">LinkedIn</a> · <a href="{{ github }}">GitHub</a> · <a href="{{ youtube }}">YouTube</a></div>
   <pre class="ag-tattoo" aria-label="Daniel NewLife Budyn">{{ tattoo_logo }}</pre>
 </footer>
 </body>

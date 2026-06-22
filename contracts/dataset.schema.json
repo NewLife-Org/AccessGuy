@@ -1,0 +1,432 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://accessguy.local/contracts/dataset.schema.json",
+  "title": "AccessGuy Dataset",
+  "description": "Kanoniczny, niezależny od języka kontrakt między skanerem (PowerShell) a procesorem (Python). Skaner emituje dokładnie ten kształt; procesor go waliduje i przetwarza. Wersjonowane przez schemaVersion.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "tenant", "scanContext", "accounts"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "Wersja kontraktu. Procesor odmawia obróbki przy niezgodności major. 1.1 dokłada activity, lastPasswordChangeDateTime, subscribedSkus. 1.2 dokłada (addytywnie) top-level groups[] i applications[] — moduły Grupy i Aplikacje. 1.3 dokłada (addytywnie) account.riskyUser, application.lastSignInDateTime z SP sign-in activity, application.credentialEvents[], top-level caPolicies[] i tenantPolicies. 1.4 dokłada (addytywnie) caPolicy.includeApplications/excludeApplications — zakres aplikacji polityki, by odróżnić wymuszanie MFA szerokie (All users + All apps) od wąskiego.",
+      "enum": ["1.0", "1.1", "1.2", "1.3", "1.4"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Moment wygenerowania skanu (UTC, ISO 8601). Procesor liczy 'dni od logowania' względem tej wartości, nie względem 'teraz' — dzięki temu obróbka jest deterministyczna."
+    },
+    "tenant": {
+      "type": "object",
+      "required": ["id", "displayName", "verifiedDomains"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "verifiedDomains": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Zweryfikowane domeny organizacji — podstawa klasyfikacji internal/external."
+        }
+      }
+    },
+    "scanContext": {
+      "type": "object",
+      "required": ["scannerVersion", "authMode", "collectorsRun", "premiumLicense"],
+      "additionalProperties": false,
+      "properties": {
+        "scannerVersion": { "type": "string" },
+        "authMode": { "type": "string", "enum": ["delegated", "app"] },
+        "operator": {
+          "type": ["string", "null"],
+          "description": "UPN operatora przy authMode=delegated; null przy app-only (brak atrybucji do osoby)."
+        },
+        "collectorsRun": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Które kolektory faktycznie się wykonały (np. brak scope'a wyłącza kolektor)."
+        },
+        "premiumLicense": {
+          "type": "boolean",
+          "description": "Czy tenant ma Entra ID P1/P2 — jeśli false, signInActivity jest puste i scoring nieaktywności jest 'best-effort'."
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/account" }
+    },
+    "servicePrincipals": {
+      "type": "array",
+      "description": "Opcjonalny inwentarz enterprise apps / SP (kolektor apps).",
+      "items": { "$ref": "#/$defs/servicePrincipal" },
+      "default": []
+    },
+    "subscribedSkus": {
+      "type": "array",
+      "description": "Licencje tenanta (Graph /subscribedSkus). 'Subskrypcje' = licencje M365, nie Azure ARM.",
+      "items": { "$ref": "#/$defs/subscribedSku" },
+      "default": []
+    },
+    "groups": {
+      "type": "array",
+      "description": "Moduł Grupy (1.2). Inwentarz grup z /groups + owners + role przypisane do grupy + licencje grupowe. Pusty, gdy kolektor 'groups' nie był uruchomiony (Scope).",
+      "items": { "$ref": "#/$defs/group" },
+      "default": []
+    },
+    "applications": {
+      "type": "array",
+      "description": "Moduł Aplikacje (1.2). Rejestracje aplikacji + powiązany SP: poświadczenia (wygasanie), uprawnienia aplikacyjne/delegowane, właściciele. Pusty, gdy kolektor 'apps' nie był uruchomiony.",
+      "items": { "$ref": "#/$defs/application" },
+      "default": []
+    },
+    "caPolicies": {
+      "type": "array",
+      "description": "Polityki Conditional Access (1.3, kolektor 'caPolicies', Policy.Read.All). Znormalizowane: stan, czy wymaga MFA, czy blokuje legacy, wykluczenia (id userów/grup/ról). Pusty, gdy kolektor nie był uruchomiony / brak scope'a.",
+      "items": { "$ref": "#/$defs/caPolicy" },
+      "default": []
+    },
+    "tenantPolicies": {
+      "description": "Postawa konfiguracyjna tenanta (1.3, kolektor 'tenantPolicies'): security defaults, polityka zgód użytkowników, słabe metody MFA. null = kolektor nie był uruchomiony / brak scope'a.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/tenantPolicies" }
+      ]
+    }
+  },
+  "$defs": {
+    "account": {
+      "type": "object",
+      "required": ["id", "userPrincipalName", "displayName", "category", "accountEnabled", "createdDateTime"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "userPrincipalName": { "type": "string" },
+        "displayName": { "type": "string" },
+        "mail": { "type": ["string", "null"] },
+        "category": { "type": "string", "enum": ["internal", "external", "guest"] },
+        "accountEnabled": { "type": "boolean" },
+        "createdDateTime": { "type": "string", "format": "date-time" },
+        "lastSignInDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "lastNonInteractiveSignInDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "onPremisesSyncEnabled": { "type": ["boolean", "null"] },
+        "externalUserState": { "type": ["string", "null"], "description": "PendingAcceptance | Accepted | null" },
+        "externalUserStateChangeDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "assignedLicenses": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "mfaRegistered": { "type": ["boolean", "null"] },
+        "manager": { "type": ["string", "null"], "description": "UPN/displayName managera lub null." },
+        "lastPasswordChangeDateTime": { "type": ["string", "null"], "format": "date-time", "description": "Ostatnia zmiana hasła (1.1)." },
+        "activity": {
+          "description": "Podsumowanie aktywności z /auditLogs/signIns w oknie obserwacji (1.1). null = brak danych (np. bez P1 albo kolektor pominięty).",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/activity" }
+          ]
+        },
+        "roles": { "type": "array", "items": { "$ref": "#/$defs/roleAssignment" }, "default": [] },
+        "appGrants": { "type": "array", "items": { "$ref": "#/$defs/appGrant" }, "default": [] },
+        "riskyUser": {
+          "description": "Bieżący stan ryzyka konta z Identity Protection (1.3, /identityProtection/riskyUsers, wymaga P2). null = brak wpisu ryzyka albo kolektor nie był uruchomiony.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/riskyUser" }
+          ]
+        }
+      }
+    },
+    "riskyUser": {
+      "type": "object",
+      "description": "Stan ryzyka konta wg Identity Protection — atRisk oznacza nieobsłużony (nieremediowany) alert.",
+      "required": ["riskLevel", "riskState"],
+      "additionalProperties": false,
+      "properties": {
+        "riskLevel": { "type": "string", "description": "low | medium | high | hidden | none | unknownFutureValue" },
+        "riskState": { "type": "string", "description": "atRisk | confirmedCompromised | remediated | dismissed | none" },
+        "riskDetail": { "type": ["string", "null"], "description": "Powód wg Identity Protection (np. adminConfirmedUserCompromised)." },
+        "riskLastUpdatedDateTime": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "description": "Agregaty logowań w oknie (domyślnie 30 dni) liczone deterministycznie względem generatedAt.",
+      "additionalProperties": false,
+      "properties": {
+        "windowDays": { "type": "integer", "default": 30 },
+        "signInCount": { "type": "integer", "default": 0 },
+        "failedSignInCount": { "type": "integer", "default": 0 },
+        "nightSignInCount": { "type": "integer", "default": 0, "description": "Logowania w godz. 20:00–04:00 UTC (potencjalnie nietypowe)." },
+        "riskySignInCount": { "type": "integer", "default": 0, "description": "Logowania z niezerowym ryzykiem (riskState/riskLevel) — sygnał incydentu." },
+        "legacyAuthCount": { "type": "integer", "default": 0, "description": "Logowania przez legacy auth (IMAP/POP/SMTP/ActiveSync) — protokoły omijające MFA. Liczba PRÓB (udanych + zablokowanych)." },
+        "legacySuccessCount": { "type": "integer", "default": 0, "description": "Z legacyAuthCount: ile faktycznie SIĘ POWIODŁO (errorCode 0). To jest realne ominięcie MFA; reszta to próby zablokowane (np. przez Conditional Access)." },
+        "legacyAuthClients": {
+          "type": "array",
+          "description": "Rozkład legacy auth per konkretny protokół/klient (clientAppUsed) — do weryfikacji, które są akceptowalne.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["clientApp", "count"],
+            "properties": {
+              "clientApp": { "type": "string", "description": "Wartość clientAppUsed z logu, np. 'IMAP4', 'Authenticated SMTP', 'Exchange ActiveSync'." },
+              "count": { "type": "integer", "description": "Liczba prób tym protokołem." },
+              "successCount": { "type": "integer", "default": 0, "description": "Ile z tych prób się powiodło (errorCode 0)." }
+            }
+          },
+          "default": []
+        },
+        "lastSignInApp": { "type": ["string", "null"], "description": "Aplikacja ostatniego logowania (ostatnia akcja)." },
+        "topApplications": {
+          "type": "array",
+          "description": "Najczęściej używane aplikacje (malejąco).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["appDisplayName", "count"],
+            "properties": {
+              "appDisplayName": { "type": "string" },
+              "count": { "type": "integer" }
+            }
+          },
+          "default": []
+        }
+      }
+    },
+    "subscribedSku": {
+      "type": "object",
+      "required": ["skuPartNumber"],
+      "additionalProperties": false,
+      "properties": {
+        "skuPartNumber": { "type": "string" },
+        "skuId": { "type": ["string", "null"] },
+        "prepaidUnits": { "type": "integer", "default": 0, "description": "Wykupione jednostki (enabled)." },
+        "consumedUnits": { "type": "integer", "default": 0, "description": "Przypisane jednostki." }
+      }
+    },
+    "roleAssignment": {
+      "type": "object",
+      "required": ["roleName", "assignmentType", "isPrivileged"],
+      "additionalProperties": false,
+      "properties": {
+        "roleName": { "type": "string" },
+        "roleTemplateId": { "type": ["string", "null"] },
+        "assignmentType": { "type": "string", "enum": ["eligible", "active", "permanent"] },
+        "isPrivileged": { "type": "boolean" },
+        "grantedDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "lastActivationDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "activationCount90d": { "type": "integer", "default": 0 }
+      }
+    },
+    "appGrant": {
+      "type": "object",
+      "required": ["appDisplayName", "grantType", "isHighRisk"],
+      "additionalProperties": false,
+      "properties": {
+        "appDisplayName": { "type": "string" },
+        "grantType": { "type": "string", "enum": ["delegated", "application"] },
+        "scopes": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "isHighRisk": { "type": "boolean" }
+      }
+    },
+    "servicePrincipal": {
+      "type": "object",
+      "required": ["id", "displayName"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "appId": { "type": ["string", "null"] },
+        "accountEnabled": { "type": ["boolean", "null"] },
+        "appRoleAssignments": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "highRiskPermissions": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "groupRoleAssignment": {
+      "type": "object",
+      "description": "Rola katalogowa przypisana DO grupy (role-assignable group). Członkowie grupy dziedziczą uprawnienie — to wektor eskalacji.",
+      "required": ["roleName", "isPrivileged"],
+      "additionalProperties": false,
+      "properties": {
+        "roleName": { "type": "string" },
+        "roleTemplateId": { "type": ["string", "null"] },
+        "assignmentType": { "type": "string", "enum": ["eligible", "active", "permanent"], "default": "permanent" },
+        "isPrivileged": { "type": "boolean" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "displayName", "groupKind", "createdDateTime"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "mail": { "type": ["string", "null"] },
+        "groupKind": {
+          "type": "string",
+          "description": "Znormalizowany rodzaj grupy: 'microsoft365' | 'security' | 'mailSecurity' | 'distribution'. Liczony ze (mailEnabled, securityEnabled, groupTypes) przez skaner.",
+          "enum": ["microsoft365", "security", "mailSecurity", "distribution"]
+        },
+        "mailEnabled": { "type": ["boolean", "null"] },
+        "securityEnabled": { "type": ["boolean", "null"] },
+        "membershipType": {
+          "type": "string",
+          "description": "'assigned' (statyczne) albo 'dynamic' (reguła membershipRule). Dynamiczne nadają dostęp automatycznie — wymagają przeglądu reguły.",
+          "enum": ["assigned", "dynamic"]
+        },
+        "membershipRule": { "type": ["string", "null"], "description": "Treść reguły dla grup dynamicznych (insight: zbyt szerokie reguły)." },
+        "visibility": { "type": ["string", "null"], "description": "Public | Private | HiddenMembership | null (grupy M365)." },
+        "isAssignableToRole": { "type": ["boolean", "null"], "description": "Grupa może mieć przypisane role katalogowe (role-assignable). Wysoka wartość dla atakującego." },
+        "onPremisesSyncEnabled": { "type": ["boolean", "null"] },
+        "createdDateTime": { "type": "string", "format": "date-time" },
+        "renewedDateTime": { "type": ["string", "null"], "format": "date-time", "description": "Ostatnie odnowienie grupy M365 (sygnał świeżości/porzucenia)." },
+        "memberCount": { "type": ["integer", "null"], "description": "Liczba członków (best-effort; null = nie policzono)." },
+        "guestCount": { "type": ["integer", "null"], "description": "Liczba członków-gości (best-effort)." },
+        "ownerCount": { "type": ["integer", "null"] },
+        "owners": { "type": "array", "items": { "type": "string" }, "default": [], "description": "UPN/displayName właścicieli." },
+        "assignedRoles": { "type": "array", "items": { "$ref": "#/$defs/groupRoleAssignment" }, "default": [] },
+        "assignedLicenses": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Licencje przypisane przez grupę (group-based licensing) — promień rażenia." },
+        "members": {
+          "type": "array",
+          "description": "Konkretni członkowie grupy (best-effort, lista przycinana do limitu — patrz memberCount dla pełnej liczby).",
+          "items": { "$ref": "#/$defs/principalRef" },
+          "default": []
+        }
+      }
+    },
+    "principalRef": {
+      "type": "object",
+      "description": "Odniesienie do principala (członek grupy lub podmiot podpięty do aplikacji).",
+      "required": ["displayName"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": ["string", "null"], "description": "Object id principala (do powiązań, np. przypisana grupa -> jej członkowie)." },
+        "displayName": { "type": "string" },
+        "userPrincipalName": { "type": ["string", "null"] },
+        "type": { "type": "string", "enum": ["user", "group", "servicePrincipal", "device", "other"], "default": "user" }
+      }
+    },
+    "assignedPrincipal": {
+      "type": "object",
+      "description": "Podmiot podpięty do aplikacji: przez przypisanie (appRoleAssignedTo) lub przez zgodę OAuth.",
+      "required": ["displayName", "via"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": ["string", "null"], "description": "Object id principala (np. id grupy -> rozwinięcie jej członków w raporcie)." },
+        "displayName": { "type": "string" },
+        "userPrincipalName": { "type": ["string", "null"] },
+        "type": { "type": "string", "enum": ["user", "group", "servicePrincipal", "other"], "default": "user" },
+        "via": { "type": "string", "enum": ["assignment", "consent"], "description": "assignment = przypisany do enterprise app; consent = wyraził zgodę OAuth (delegated)." }
+      }
+    },
+    "appCredential": {
+      "type": "object",
+      "description": "Poświadczenie aplikacji (sekret lub certyfikat). daysToExpiry/expired liczy skaner względem generatedAt (determinizm).",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["secret", "certificate"] },
+        "displayName": { "type": ["string", "null"] },
+        "startDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "endDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "daysToExpiry": { "type": ["integer", "null"], "description": "Dni do wygaśnięcia (ujemne = już wygasłe)." },
+        "expired": { "type": "boolean", "default": false },
+        "lifetimeDays": { "type": ["integer", "null"], "description": "Łączny okres ważności poświadczenia (insight: bardzo długie sekrety)." }
+      }
+    },
+    "appPermissionGrant": {
+      "type": "object",
+      "description": "Nadane uprawnienie aplikacji: aplikacyjne (app-only, działa bez użytkownika) lub delegowane (w imieniu użytkownika).",
+      "required": ["permission", "grantType", "isHighRisk"],
+      "additionalProperties": false,
+      "properties": {
+        "resource": { "type": ["string", "null"], "description": "Zasób (np. 'Microsoft Graph')." },
+        "permission": { "type": "string", "description": "Nazwa uprawnienia (np. 'Directory.ReadWrite.All')." },
+        "grantType": { "type": "string", "enum": ["application", "delegated"] },
+        "isHighRisk": { "type": "boolean" }
+      }
+    },
+    "application": {
+      "type": "object",
+      "required": ["id", "displayName"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Object id rejestracji aplikacji (lub SP, gdy brak rejestracji)." },
+        "appId": { "type": ["string", "null"] },
+        "displayName": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "signInAudience": { "type": ["string", "null"], "description": "AzureADMyOrg | AzureADMultipleOrgs | AzureADandPersonalMicrosoftAccount — multi-tenant = szersza powierzchnia." },
+        "publisherDomain": { "type": ["string", "null"] },
+        "verifiedPublisher": { "type": ["string", "null"], "description": "Zweryfikowany wydawca (MPN) lub null (niezweryfikowany)." },
+        "accountEnabled": { "type": ["boolean", "null"], "description": "Stan powiązanego service principal." },
+        "createdDateTime": { "type": ["string", "null"], "format": "date-time" },
+        "lastSignInDateTime": { "type": ["string", "null"], "format": "date-time", "description": "Ostatnie logowanie SP (best-effort; dormant app insight)." },
+        "owners": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "credentials": { "type": "array", "items": { "$ref": "#/$defs/appCredential" }, "default": [] },
+        "permissions": { "type": "array", "items": { "$ref": "#/$defs/appPermissionGrant" }, "default": [] },
+        "assignedUsers": {
+          "type": "array",
+          "description": "Podmioty podpięte do aplikacji (przypisani do enterprise app + ci, którzy wyrazili zgodę OAuth).",
+          "items": { "$ref": "#/$defs/assignedPrincipal" },
+          "default": []
+        },
+        "credentialEvents": {
+          "type": "array",
+          "description": "Zdarzenia na poświadczeniach z auditu ApplicationManagement (1.3): kto i kiedy dodał/zmienił sekret lub certyfikat tej aplikacji. Dowód do korelacji ze słabym ownerem.",
+          "items": { "$ref": "#/$defs/credentialEvent" },
+          "default": []
+        }
+      }
+    },
+    "credentialEvent": {
+      "type": "object",
+      "required": ["activity", "activityDateTime"],
+      "additionalProperties": false,
+      "properties": {
+        "activity": { "type": "string", "description": "activityDisplayName z auditu, np. 'Update application – Certificates and secrets management'." },
+        "actor": { "type": ["string", "null"], "description": "UPN użytkownika lub nazwa aplikacji, która wykonała operację (initiatedBy)." },
+        "activityDateTime": { "type": "string", "format": "date-time" }
+      }
+    },
+    "caPolicy": {
+      "type": "object",
+      "description": "Znormalizowana polityka Conditional Access. Skaner liczy requiresMfa/blocksLegacyAuth z grantControls i clientAppTypes — procesor nie musi znać kształtu Graph.",
+      "required": ["id", "displayName", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "state": { "type": "string", "description": "enabled | disabled | enabledForReportingButNotEnforced" },
+        "requiresMfa": { "type": "boolean", "default": false, "description": "grantControls zawiera 'mfa' (lub authenticationStrength)." },
+        "blocksLegacyAuth": { "type": "boolean", "default": false, "description": "Polityka 'block' celująca w clientAppTypes legacy (exchangeActiveSync/other)." },
+        "clientAppTypes": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "includeUsers": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Id userów lub 'All'/'None'/'GuestsOrExternalUsers'." },
+        "excludeUsers": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "includeGroups": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "excludeGroups": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "includeRoles": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "excludeRoles": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "includeApplications": { "type": "array", "items": { "type": "string" }, "default": [], "description": "conditions.applications.includeApplications — 'All' lub id aplikacji. Pozwala procesorowi odróżnić politykę szeroką (All) od wąskiej (np. jedna aplikacja); pusto = brak danych o zakresie (zachowawczo traktowane jak All)." },
+        "excludeApplications": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "grantControls": { "type": "array", "items": { "type": "string" }, "default": [], "description": "builtInControls, np. mfa, block, compliantDevice." },
+        "modifiedDateTime": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "tenantPolicies": {
+      "type": "object",
+      "description": "Ustawienia tenanta istotne dla postawy (wszystko read-only, Policy.Read.All). null w polu = nie udało się odczytać.",
+      "additionalProperties": false,
+      "properties": {
+        "securityDefaultsEnabled": { "type": ["boolean", "null"], "description": "Security defaults (baseline ochrony dla tenantów bez CA/P1)." },
+        "usersCanConsentToApps": { "type": ["boolean", "null"], "description": "Czy zwykli użytkownicy mogą sami nadawać zgody aplikacjom (źródło 'illicit consent')." },
+        "usersCanRegisterApps": { "type": ["boolean", "null"], "description": "defaultUserRolePermissions.allowedToCreateApps." },
+        "guestUserAccess": { "type": ["string", "null"], "description": "memberLevel | limited | restricted — poziom dostępu kont gości (guestUserRoleId)." },
+        "weakAuthMethodsEnabled": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Włączone słabe metody MFA (Sms/Voice/Email) z authenticationMethodsPolicy." }
+      }
+    }
+  }
+}

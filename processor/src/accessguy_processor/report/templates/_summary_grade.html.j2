@@ -1,0 +1,21 @@
+{# Ocena postawy tenanta (A–F) — w raporcie połączonym JEDYNY element nad zakładkami. #}
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ overview.grade }}">
+    <span class="ag-grade-letter">{{ overview.grade }}</span>
+    <span class="ag-grade-lbl">{{ tr('tmpl.sum.grade_lbl') }}</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>{{ tr('tmpl.sum.grade_h2') }}</h2>
+    <p class="ag-exec-note">{{ overview.grade_note }}
+      {{ tr('tmpl.sum.exec_total') }} <strong class="critv">{{ overview.combined_sev['critical'] }}</strong> critical ·
+      <strong class="warnv">{{ overview.combined_sev['high'] }}</strong> high ·
+      {{ overview.combined_sev['medium'] }} medium.
+      {{ tr('tmpl.sum.exec_paths') }} <strong class="{{ 'critv' if overview.escalation_paths }}">{{ overview.escalation_paths }}</strong>.
+    </p>
+    {% if overview.insights %}
+    <ul class="ag-top">
+      {% for ins in overview.insights %}<li>⚠ {{ ins }}</li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">{{ tr('tmpl.sum.no_insights') }}</p>{% endif %}
+  </div>
+</section>

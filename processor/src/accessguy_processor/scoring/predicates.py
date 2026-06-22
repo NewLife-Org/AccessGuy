@@ -10,9 +10,10 @@ Predykaty są celowo proste (porównania dat/booli) — łatwe do czytania i tes
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from ..i18n import Translator
 from ..models import Account
 from ..rules import Rubric, Rule
 from .correlation import CorrelationIndex, account_weaknesses, attack_signals, priv_role_names
@@ -26,6 +27,8 @@ class ScoringContext:
     # Indeks korelacyjny (tożsamość × grupa × aplikacja) — None przy scoringu pojedynczego
     # obiektu bez datasetu (testy jednostkowe); reguły korelacyjne wtedy grzecznie milczą.
     index: CorrelationIndex | None = None
+    # Tłumacz dowodów (evidence). Domyślnie EN — predykaty wołają ctx.t("evidence.<KEY>", ...).
+    t: Translator = field(default_factory=Translator)
 
     def days_since_sign_in(self, acc: Account) -> int | None:
         if acc.last_sign_in_date_time is None:
@@ -67,7 +70,7 @@ def inactive_90(acc: Account, ctx: ScoringContext) -> str | None:
     d = ctx.days_since_sign_in(acc)
     warn, crit = ctx.th("inactiveWarnDays"), ctx.th("inactiveCriticalDays")
     if d is not None and warn <= d < crit:
-        return f"Ostatnie logowanie: {d} dni temu (próg {warn})."
+        return ctx.t("evidence.INACTIVE_90", days=d, warn=warn)
     return None
 
 
@@ -75,13 +78,13 @@ def inactive_180(acc: Account, ctx: ScoringContext) -> str | None:
     d = ctx.days_since_sign_in(acc)
     crit = ctx.th("inactiveCriticalDays")
     if d is not None and d >= crit:
-        return f"Ostatnie logowanie: {d} dni temu (próg krytyczny {crit})."
+        return ctx.t("evidence.INACTIVE_180", days=d, crit=crit)
     return None
 
 
 def never_signed_in(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.last_sign_in_date_time is None and acc.account_enabled and _has_license(acc):
-        return "Konto aktywne i licencjonowane, brak rejestru logowania."
+        return ctx.t("evidence.NEVER_SIGNED_IN")
     return None
 
 
@@ -90,33 +93,33 @@ def stale_guest(acc: Account, ctx: ScoringContext) -> str | None:
         return None
     pending = ctx.th("staleGuestPendingDays")
     if acc.external_user_state == "PendingAcceptance" and ctx.account_age_days(acc) >= pending:
-        return f"Zaproszenie 'PendingAcceptance' od {ctx.account_age_days(acc)} dni."
+        return ctx.t("evidence.STALE_GUEST.pending", days=ctx.account_age_days(acc))
     d = ctx.days_since_sign_in(acc)
     if d is None:
-        return "Gość bez rejestru logowania."
+        return ctx.t("evidence.STALE_GUEST.no_record")
     if d >= ctx.th("inactiveWarnDays"):
-        return f"Gość nieaktywny: {d} dni."
+        return ctx.t("evidence.STALE_GUEST.inactive", days=d)
     return None
 
 
 def guest_privileged(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.category == "guest" and acc.has_privileged_role:
         names = ", ".join(r.role_name for r in acc.roles if r.is_privileged)
-        return f"Gość z rolą uprzywilejowaną: {names}."
+        return ctx.t("evidence.GUEST_PRIVILEGED", roles=names)
     return None
 
 
 def ext_privileged(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.category == "external" and acc.has_privileged_role:
         names = ", ".join(r.role_name for r in acc.roles if r.is_privileged)
-        return f"Konto zewnętrzne z rolą uprzywilejowaną: {names}."
+        return ctx.t("evidence.EXT_PRIVILEGED", roles=names)
     return None
 
 
 def permanent_privilege(acc: Account, ctx: ScoringContext) -> str | None:
     perm = [r for r in acc.roles if r.is_privileged and r.assignment_type == "permanent"]
     if perm:
-        return f"Stałe (poza-PIM) role: {', '.join(r.role_name for r in perm)}."
+        return ctx.t("evidence.PERMANENT_PRIVILEGE", roles=", ".join(r.role_name for r in perm))
     return None
 
 
@@ -126,19 +129,19 @@ def eligible_never_used(acc: Account, ctx: ScoringContext) -> str | None:
         if r.assignment_type == "eligible" and r.activation_count_90d == 0
     ]
     if unused:
-        return f"PIM-eligible nieaktywowane: {', '.join(r.role_name for r in unused)}."
+        return ctx.t("evidence.ELIGIBLE_NEVER_USED", roles=", ".join(r.role_name for r in unused))
     return None
 
 
 def priv_no_mfa(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.has_privileged_role and acc.mfa_registered is False:
-        return "Konto uprzywilejowane bez zarejestrowanego MFA."
+        return ctx.t("evidence.PRIV_NO_MFA")
     return None
 
 
 def no_mfa(acc: Account, ctx: ScoringContext) -> str | None:
     if not acc.has_privileged_role and acc.mfa_registered is False:
-        return "Brak zarejestrowanego MFA."
+        return ctx.t("evidence.NO_MFA")
     return None
 
 
@@ -154,39 +157,39 @@ def recent_role_grant(acc: Account, ctx: ScoringContext) -> str | None:
         if ref.tzinfo is None:
             ref = ref.replace(tzinfo=timezone.utc)
         if (ref - gd).days <= days:
-            return f"Rola '{r.role_name}' nadana {(ref - gd).days} dni temu."
+            return ctx.t("evidence.RECENT_ROLE_GRANT", role=r.role_name, days=(ref - gd).days)
     return None
 
 
 def high_risk_app(acc: Account, ctx: ScoringContext) -> str | None:
     risky = [g for g in acc.app_grants if g.is_high_risk]
     if risky:
-        return f"Zgody wysokiego ryzyka: {', '.join(g.app_display_name for g in risky)}."
+        return ctx.t("evidence.HIGH_RISK_APP", apps=", ".join(g.app_display_name for g in risky))
     return None
 
 
 def disabled_with_assets(acc: Account, ctx: ScoringContext) -> str | None:
     if not acc.account_enabled and (acc.roles or acc.assigned_licenses):
-        return "Konto wyłączone, ale wciąż ma role i/lub licencje."
+        return ctx.t("evidence.DISABLED_WITH_ASSETS")
     return None
 
 
 def license_waste(acc: Account, ctx: ScoringContext) -> str | None:
     d = ctx.days_since_sign_in(acc)
     if _has_license(acc) and d is not None and d >= ctx.th("inactiveWarnDays"):
-        return f"Licencja przypisana, konto nieaktywne {d} dni."
+        return ctx.t("evidence.LICENSE_WASTE", days=d)
     return None
 
 
 def no_manager_privileged(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.has_privileged_role and not acc.manager:
-        return "Konto uprzywilejowane bez przypisanego managera."
+        return ctx.t("evidence.NO_MANAGER_PRIVILEGED")
     return None
 
 
 def sync_anomaly(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.has_privileged_role and acc.on_premises_sync_enabled:
-        return "Konto uprzywilejowane synchronizowane z on-prem (zalecane cloud-only)."
+        return ctx.t("evidence.SYNC_ANOMALY")
     return None
 
 
@@ -203,20 +206,22 @@ def unused_privilege(acc: Account, ctx: ScoringContext) -> str | None:
         return None
     names = ", ".join(r.role_name for r in priv)
     if acc.activity is not None and acc.activity.sign_in_count == 0:
-        return f"Role {names}: brak logowań w ostatnich {acc.activity.window_days} dniach."
+        return ctx.t("evidence.UNUSED_PRIVILEGE.no_signins", roles=names, window=acc.activity.window_days)
     d = ctx.days_since_sign_in(acc)
     if d is not None and d >= ctx.th("inactiveWarnDays"):
-        return f"Role {names}: ostatnie logowanie {d} dni temu — uprawnienia nieużywane."
+        return ctx.t("evidence.UNUSED_PRIVILEGE.inactive", roles=names, days=d)
     return None
 
 
 def risky_signins(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.activity and acc.activity.risky_sign_in_count > 0:
         # Korelacja z MFA: ryzykowne logowanie na koncie bez MFA to dużo gorsza wiadomość.
-        note = " Konto BEZ zarejestrowanego MFA." if acc.mfa_registered is False else ""
-        return (
-            f"{acc.activity.risky_sign_in_count} ryzykownych logowań "
-            f"w oknie {acc.activity.window_days} dni.{note}"
+        note = ctx.t("evidence.RISKY_SIGNINS.note_no_mfa") if acc.mfa_registered is False else ""
+        return ctx.t(
+            "evidence.RISKY_SIGNINS",
+            count=acc.activity.risky_sign_in_count,
+            window=acc.activity.window_days,
+            note=note,
         )
     return None
 
@@ -228,38 +233,40 @@ def night_signins(acc: Account, ctx: ScoringContext) -> str | None:
         return None
     n = acc.activity.night_sign_in_count
     if acc.has_privileged_role:
-        return f"{n} logowań KONTA UPRZYWILEJOWANEGO w godz. 20:00–04:00 (UTC)."
+        return ctx.t("evidence.NIGHT_SIGNINS.priv", count=n)
     if n >= ctx.th("nightSignInWarn"):
-        return f"{n} logowań w godz. 20:00–04:00 (UTC) — próg {ctx.th('nightSignInWarn')}."
+        return ctx.t("evidence.NIGHT_SIGNINS.warn", count=n, warn=ctx.th("nightSignInWarn"))
     return None
 
 
-def _legacy_clients_str(acc: Account, *, only_success: bool) -> str:
+def _legacy_clients_str(acc: Account, ctx: ScoringContext, *, only_success: bool) -> str:
     """Czytelna lista protokołów legacy, np. 'IMAP4 (2 udane / 3 prób), POP3 (1/1)'."""
     parts = []
     for c in acc.activity.legacy_auth_clients:  # type: ignore[union-attr]
         if only_success and c.success_count == 0:
             continue
-        parts.append(f"{c.client_app} ({c.success_count} udane / {c.count} prób)")
+        parts.append(
+            ctx.t("evidence.legacy_client_part", client=c.client_app, success=c.success_count, count=c.count)
+        )
     return ", ".join(parts)
 
 
 def legacy_auth_success(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.activity and acc.activity.legacy_success_count > 0:
-        detail = _legacy_clients_str(acc, only_success=True)
+        detail = _legacy_clients_str(acc, ctx, only_success=True)
         if detail:
-            return f"UDANE legacy auth (ominięcie MFA): {detail}."
-        return f"{acc.activity.legacy_success_count} udanych logowań legacy (ominięcie MFA)."
+            return ctx.t("evidence.LEGACY_AUTH_SUCCESS.detail", detail=detail)
+        return ctx.t("evidence.LEGACY_AUTH_SUCCESS.count", count=acc.activity.legacy_success_count)
     return None
 
 
 def legacy_auth_blocked(acc: Account, ctx: ScoringContext) -> str | None:
     # Tylko gdy były próby, ale ŻADNA się nie powiodła (np. zablokowane przez Conditional Access).
     if acc.activity and acc.activity.legacy_auth_count > 0 and acc.activity.legacy_success_count == 0:
-        detail = _legacy_clients_str(acc, only_success=False)
+        detail = _legacy_clients_str(acc, ctx, only_success=False)
         if detail:
-            return f"Próby legacy (zablokowane): {detail}."
-        return f"{acc.activity.legacy_auth_count} zablokowanych prób legacy auth."
+            return ctx.t("evidence.LEGACY_AUTH_BLOCKED.detail", detail=detail)
+        return ctx.t("evidence.LEGACY_AUTH_BLOCKED.count", count=acc.activity.legacy_auth_count)
     return None
 
 
@@ -278,8 +285,12 @@ def stale_password(acc: Account, ctx: ScoringContext) -> str | None:
         last = last.replace(tzinfo=timezone.utc)
     days = max(0, (ref - last).days)
     if days >= ctx.th("passwordMaxAgeDays"):
-        mfa_note = "konto BEZ MFA" if acc.mfa_registered is False else "status MFA nieznany"
-        return f"Hasło niezmieniane od {days} dni i {mfa_note} — hasło to jedyna/główna ochrona."
+        mfa_note = (
+            ctx.t("evidence.STALE_PASSWORD.no_mfa")
+            if acc.mfa_registered is False
+            else ctx.t("evidence.STALE_PASSWORD.mfa_unknown")
+        )
+        return ctx.t("evidence.STALE_PASSWORD", days=days, mfa_note=mfa_note)
     return None
 
 
@@ -287,13 +298,15 @@ def many_failed_signins(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.activity and acc.activity.failed_sign_in_count >= ctx.th("failedSignInWarn"):
         # Korelacja z legacy: spray zwykle leci starymi protokołami (brak MFA po drodze).
         note = (
-            " Równolegle widoczne próby legacy auth — typowa sygnatura password spray."
+            ctx.t("evidence.MANY_FAILED_SIGNINS.note_legacy")
             if acc.activity.legacy_auth_count > 0
             else ""
         )
-        return (
-            f"{acc.activity.failed_sign_in_count} nieudanych logowań w ostatnich "
-            f"{acc.activity.window_days} dniach — możliwy password spray / brute force.{note}"
+        return ctx.t(
+            "evidence.MANY_FAILED_SIGNINS",
+            count=acc.activity.failed_sign_in_count,
+            window=acc.activity.window_days,
+            note=note,
         )
     return None
 
@@ -301,7 +314,7 @@ def many_failed_signins(acc: Account, ctx: ScoringContext) -> str | None:
 def multiple_priv_roles(acc: Account, ctx: ScoringContext) -> str | None:
     names = sorted({r.role_name for r in acc.roles if r.is_privileged})
     if len(names) >= ctx.th("manyPrivRoles"):
-        return f"{len(names)} ról uprzywilejowanych na jednym koncie: {', '.join(names)}."
+        return ctx.t("evidence.MULTIPLE_PRIV_ROLES", count=len(names), roles=", ".join(names))
     return None
 
 
@@ -309,19 +322,19 @@ def new_privileged_account(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.has_privileged_role:
         age = ctx.account_age_days(acc)
         if age <= ctx.th("recentGrantDays"):
-            return f"Konto uprzywilejowane utworzone {age} dni temu — zweryfikuj pochodzenie."
+            return ctx.t("evidence.NEW_PRIVILEGED_ACCOUNT", days=age)
     return None
 
 
 def guest_with_license(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.category == "guest" and acc.assigned_licenses:
-        return f"Gość z licencją: {', '.join(acc.assigned_licenses)}."
+        return ctx.t("evidence.GUEST_WITH_LICENSE", licenses=", ".join(acc.assigned_licenses))
     return None
 
 
 def external_member(acc: Account, ctx: ScoringContext) -> str | None:
     if acc.category == "external":
-        return "Tożsamość spoza zweryfikowanych domen występuje jako 'member' (nie guest)."
+        return ctx.t("evidence.EXTERNAL_MEMBER")
     return None
 
 
@@ -337,28 +350,29 @@ def priv_compromise_signals(acc: Account, ctx: ScoringContext) -> str | None:
     riskState z /identityProtection/riskyUsers). Sama seria nieudanych logowań NIE
     wystarcza — to często wygasłe hasło w starym kliencie; zostaje w MANY_FAILED_SIGNINS
     (medium), a tutaj trafia co najwyżej jako kontekst w evidence."""
-    hard, soft = attack_signals(acc, ctx.th("failedSignInWarn"))
+    hard, soft = attack_signals(acc, ctx.th("failedSignInWarn"), ctx.t)
     if not hard:
         return None
     sources: list[str] = []
     direct = sorted({r.role_name for r in acc.roles if r.is_privileged})
     if direct:
-        sources.append(f"role: {', '.join(direct)}")
+        sources.append(ctx.t("evidence.PRIV_COMPROMISE_SIGNALS.source_roles", roles=", ".join(direct)))
     if ctx.index:
         for g in ctx.index.priv_groups_of_user.get(acc.id, []):
-            sources.append(f"grupa {g.display_name} ({priv_role_names(g)})")
+            sources.append(
+                ctx.t("evidence.PRIV_COMPROMISE_SIGNALS.source_group",
+                      group=g.display_name, roles=priv_role_names(g))
+            )
     if not sources:
         return None
-    evidence = (
-        f"Uprawnienia uprzywilejowane ({'; '.join(sources)}). "
-        f"Twarde dowody: {'; '.join(hard)}."
+    evidence = ctx.t(
+        "evidence.PRIV_COMPROMISE_SIGNALS.base",
+        sources="; ".join(sources),
+        hard="; ".join(hard),
     )
     if soft:
-        evidence += f" Kontekst dodatkowy: {'; '.join(soft)}."
-    evidence += (
-        " Weryfikacja: Entra ID → Monitoring → Sign-in logs, filtr na tego użytkownika "
-        "(kolumny: Risk state, Client app, Status)."
-    )
+        evidence += ctx.t("evidence.PRIV_COMPROMISE_SIGNALS.context", soft="; ".join(soft))
+    evidence += ctx.t("evidence.PRIV_COMPROMISE_SIGNALS.verify")
     return evidence
 
 
@@ -372,14 +386,21 @@ def risky_user_unremediated(acc: Account, ctx: ScoringContext) -> str | None:
     when = (
         ru.risk_last_updated_date_time.date().isoformat()
         if ru.risk_last_updated_date_time
-        else "data nieznana"
+        else ctx.t("evidence.RISKY_USER_UNREMEDIATED.date_unknown")
     )
-    detail = f", powód: {ru.risk_detail}" if ru.risk_detail and ru.risk_detail != "none" else ""
-    note = " Konto ma rolę uprzywilejowaną!" if acc.has_privileged_role else ""
-    return (
-        f"Stan ryzyka '{ru.risk_state}' (poziom {ru.risk_level}, aktualizacja {when}{detail}) "
-        f"wisi nieobsłużony w Identity Protection.{note} Weryfikacja: Entra ID → Identity "
-        "Protection → Risky users."
+    detail = (
+        ctx.t("evidence.RISKY_USER_UNREMEDIATED.detail", reason=ru.risk_detail)
+        if ru.risk_detail and ru.risk_detail != "none"
+        else ""
+    )
+    note = ctx.t("evidence.RISKY_USER_UNREMEDIATED.note_priv") if acc.has_privileged_role else ""
+    return ctx.t(
+        "evidence.RISKY_USER_UNREMEDIATED.base",
+        state=ru.risk_state,
+        level=ru.risk_level,
+        when=when,
+        detail=detail,
+        note=note,
     )
 
 
@@ -391,12 +412,8 @@ def ca_mfa_excluded(acc: Account, ctx: ScoringContext) -> str | None:
     exclusions = ctx.index.mfa_exclusions_of_user.get(acc.id, [])
     if not exclusions:
         return None
-    note = (
-        " Konto ma rolę uprzywilejowaną — wykluczenie admina z MFA to gotowa furtka."
-        if acc.has_privileged_role
-        else ""
-    )
-    return f"Wykluczone z wymogu MFA: {'; '.join(sorted(set(exclusions)))}.{note}"
+    note = ctx.t("evidence.CA_MFA_EXCLUDED.note_priv") if acc.has_privileged_role else ""
+    return ctx.t("evidence.CA_MFA_EXCLUDED", policies="; ".join(sorted(set(exclusions))), note=note)
 
 
 def shadow_privilege(acc: Account, ctx: ScoringContext) -> str | None:
@@ -408,9 +425,9 @@ def shadow_privilege(acc: Account, ctx: ScoringContext) -> str | None:
     if not groups:
         return None
     chains = "; ".join(f"{g.display_name} → {priv_role_names(g)}" for g in groups)
-    weak = account_weaknesses(acc)
-    extra = f" Do tego konto słabo chronione: {', '.join(weak)}." if weak else ""
-    return f"Rola uprzywilejowana dziedziczona przez członkostwo: {chains}.{extra}"
+    weak = account_weaknesses(acc, ctx.t)
+    extra = ctx.t("evidence.SHADOW_PRIVILEGE.extra", weak=", ".join(weak)) if weak else ""
+    return ctx.t("evidence.SHADOW_PRIVILEGE", chains=chains, extra=extra)
 
 
 PREDICATES = {

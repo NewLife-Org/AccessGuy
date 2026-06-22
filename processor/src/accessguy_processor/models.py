@@ -284,6 +284,14 @@ class Application(_Base):
         return [p for p in self.permissions if p.is_high_risk]
 
     @property
+    def high_risk_app_permissions(self) -> list[AppPermissionGrant]:
+        """Uprawnienia APP-ONLY (działają bez użytkownika) oznaczone jako high-risk — to one
+        czynią z aplikacji 'klucz do tenanta'. Delegowane high-risk (wymagają zalogowanego
+        użytkownika) zostają w high_risk_permissions, ale reguły o semantyce app-only
+        (dormant / weak owner / ocena ryzyka aplikacji) używają TEGO, węższego zbioru."""
+        return [p for p in self.permissions if p.is_high_risk and p.grant_type == "application"]
+
+    @property
     def secrets(self) -> list[AppCredential]:
         return [c for c in self.credentials if c.kind == "secret"]
 
@@ -305,6 +313,8 @@ class CaPolicy(_Base):
     exclude_groups: list[str] = Field(default_factory=list, alias="excludeGroups")
     include_roles: list[str] = Field(default_factory=list, alias="includeRoles")
     exclude_roles: list[str] = Field(default_factory=list, alias="excludeRoles")
+    include_applications: list[str] = Field(default_factory=list, alias="includeApplications")
+    exclude_applications: list[str] = Field(default_factory=list, alias="excludeApplications")
     grant_controls: list[str] = Field(default_factory=list, alias="grantControls")
     modified_date_time: datetime | None = Field(default=None, alias="modifiedDateTime")
 
@@ -315,6 +325,24 @@ class CaPolicy(_Base):
     @property
     def report_only(self) -> bool:
         return self.state == "enabledForReportingButNotEnforced"
+
+    @property
+    def covers_all_users(self) -> bool:
+        """Polityka celuje we WSZYSTKICH użytkowników (includeUsers zawiera 'All')."""
+        return "All" in self.include_users
+
+    @property
+    def covers_all_apps(self) -> bool:
+        """Wszystkie aplikacje. Pusta lista = brak danych o zakresie (stary dataset / skaner
+        bez 1.4) — zachowawczo traktujemy jak 'All', żeby nie generować fałszywych alarmów."""
+        return (not self.include_applications) or ("All" in self.include_applications)
+
+    @property
+    def is_broad(self) -> bool:
+        """Szeroki zasięg = wszyscy użytkownicy i wszystkie aplikacje. Tylko taka włączona
+        polityka MFA realnie 'pokrywa tenant'; wąska (jedna aplikacja / grupa pilotażowa) NIE
+        — i nie powinna wyciszać krytycznego findingu o braku wymuszenia MFA."""
+        return self.covers_all_users and self.covers_all_apps
 
 
 class TenantPolicies(_Base):

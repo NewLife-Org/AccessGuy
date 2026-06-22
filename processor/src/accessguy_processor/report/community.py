@@ -6,7 +6,8 @@ uprawnień. 'Subskrypcje' = licencje M365 (Graph /subscribedSkus), nie Azure ARM
 
 from __future__ import annotations
 
-from ..models import Dataset
+from ..i18n import Translator
+from ..models import Account, Dataset
 from ..scoring.correlation import CorrelationIndex, account_weaknesses, priv_role_names
 
 # Ładne nazwy dla najczęstszych SKU (partNumber -> nazwa handlowa). Best-effort; brak = partNumber.
@@ -31,30 +32,35 @@ def friendly_sku(part_number: str) -> str:
     return _SKU_FRIENDLY.get(part_number, part_number)
 
 
-# Krótki opis każdego klienta legacy (clientAppUsed) — pomaga ocenić, czy protokół jest
-# świadomie akceptowany (np. SMTP do drukarek), czy to relikt do wyłączenia.
-_LEGACY_CLIENT_INFO: dict[str, str] = {
-    "Authenticated SMTP": "Wysyłka przez SMTP AUTH — typowo drukarki/skanery/aplikacje. Często świadomie tolerowane.",
-    "Exchange ActiveSync": "Natywni klienci poczty mobilnej (EAS). Zwykle do migracji na Outlook mobile (modern auth).",
-    "Exchange Web Services": "EWS — starsze integracje/CRM. Migruj na Graph API.",
-    "Exchange Online PowerShell": "Zdalny PowerShell EXO — moduł V1. Przejdź na moduł V2/V3 (modern auth).",
-    "IMAP4": "Pobieranie poczty IMAP — klienci innych firm. Wyłącz, jeśli nieużywane.",
-    "POP3": "Pobieranie poczty POP — przestarzałe. Wyłącz, jeśli nieużywane.",
-    "MAPI Over HTTP": "Starszy transport Outlook. Zwykle do wyłączenia.",
-    "Offline Address Book": "Pobieranie OAB starym klientem.",
-    "Outlook Anywhere (RPC over HTTP)": "Stary transport Outlook (RPC/HTTP). Migruj na MAPI/HTTP + modern auth.",
-    "Outlook Service": "Usługa Outlook (legacy).",
-    "Reporting Web Services": "Raportowanie EXO starym protokołem.",
-    "Other clients": "Nierozpoznany klient legacy — wymaga ręcznej weryfikacji w logu.",
-    "AutoDiscover": "AutoDiscover starym protokołem.",
-}
+# Znane wartości clientAppUsed (językowo-neutralne klucze). Opis każdego siedzi w katalogu
+# i18n pod kluczem "legacy.<clientAppUsed>" — pomaga ocenić, czy protokół jest świadomie
+# akceptowany (np. SMTP do drukarek), czy to relikt do wyłączenia.
+_LEGACY_CLIENTS: frozenset[str] = frozenset({
+    "Authenticated SMTP",
+    "Exchange ActiveSync",
+    "Exchange Web Services",
+    "Exchange Online PowerShell",
+    "IMAP4",
+    "POP3",
+    "MAPI Over HTTP",
+    "Offline Address Book",
+    "Outlook Anywhere (RPC over HTTP)",
+    "Outlook Service",
+    "Reporting Web Services",
+    "Other clients",
+    "AutoDiscover",
+})
 
 
-def legacy_client_info(client_app: str) -> str:
-    return _LEGACY_CLIENT_INFO.get(client_app, "Klient legacy — zweryfikuj źródło w logu sign-in.")
+def legacy_client_info(client_app: str, t: Translator | None = None) -> str:
+    tr = t or Translator()
+    if client_app in _LEGACY_CLIENTS:
+        return tr.t(f"legacy.{client_app}")
+    return tr.t("legacy.fallback")
 
 
-def build_community(dataset: Dataset, recent_limit: int = 10) -> dict:
+def build_community(dataset: Dataset, t: Translator | None = None, recent_limit: int = 10) -> dict:
+    tr = t or Translator()
     accounts = dataset.accounts
 
     # Liczba Global Adminów — konta posiadające rolę "Global Administrator".
@@ -110,7 +116,7 @@ def build_community(dataset: Dataset, recent_limit: int = 10) -> dict:
             agg["accounts"] += 1
     legacy_breakdown = sorted(_legacy.values(), key=lambda d: (-d["success"], -d["count"]))
     for d in legacy_breakdown:
-        d["info"] = legacy_client_info(d["client"])
+        d["info"] = legacy_client_info(d["client"], tr)
 
     # Streszczenie dla zarządu — najgorsze konta (po score, jeśli już policzony).
     worst_accounts = sorted(accounts, key=lambda a: -a.review_score)[:5]
@@ -132,7 +138,7 @@ def build_community(dataset: Dataset, recent_limit: int = 10) -> dict:
     }
     # Do oceny liczy się legacy, które SIĘ POWIODŁO (realne ominięcie MFA), nie same próby.
     grade, grade_note = _posture_grade(
-        sev_counts, len(priv_no_mfa), len(legacy_success_accounts), mfa_coverage
+        sev_counts, len(priv_no_mfa), len(legacy_success_accounts), mfa_coverage, tr
     )
 
     return {
@@ -165,7 +171,8 @@ def build_community(dataset: Dataset, recent_limit: int = 10) -> dict:
 
 
 def _posture_grade(
-    sev: dict[str, int], priv_no_mfa: int, legacy: int, mfa_coverage: int | None
+    sev: dict[str, int], priv_no_mfa: int, legacy: int, mfa_coverage: int | None,
+    t: Translator | None = None,
 ) -> tuple[str, str]:
     """Prosta, czytelna ocena postawy tenanta A–F (dla zarządu). Heurystyka, nie norma."""
     score = 100
@@ -176,20 +183,21 @@ def _posture_grade(
         score -= 15
     if mfa_coverage is not None and mfa_coverage < 90:
         score -= (90 - mfa_coverage) // 2
-    return _grade_from_score(score)
+    return _grade_from_score(score, t)
 
 
-def _grade_from_score(score: int) -> tuple[str, str]:
+def _grade_from_score(score: int, t: Translator | None = None) -> tuple[str, str]:
+    tr = t or Translator()
     score = max(0, min(100, score))
     if score >= 90:
-        return "A", "Bardzo dobra higiena dostępu."
+        return "A", tr.t("community.grade.A")
     if score >= 75:
-        return "B", "Dobra, drobne braki do poprawy."
+        return "B", tr.t("community.grade.B")
     if score >= 60:
-        return "C", "Przeciętna — kilka istotnych ryzyk."
+        return "C", tr.t("community.grade.C")
     if score >= 40:
-        return "D", "Słaba — pilne działania zalecane."
-    return "F", "Krytyczna — wymaga natychmiastowej reakcji."
+        return "D", tr.t("community.grade.D")
+    return "F", tr.t("community.grade.F")
 
 
 def _sev_counts(items) -> dict[str, int]:
@@ -199,10 +207,12 @@ def _sev_counts(items) -> dict[str, int]:
     }
 
 
-def _grade_from_sev(sev: dict[str, int], extra_penalty: int = 0) -> tuple[str, str]:
+def _grade_from_sev(
+    sev: dict[str, int], extra_penalty: int = 0, t: Translator | None = None
+) -> tuple[str, str]:
     """Ocena A–F wyłącznie z rozkładu severity (+ ewentualna kara dodatkowa)."""
     score = 100 - 15 * sev["critical"] - 7 * sev["high"] - 4 * sev["medium"] - 1 * sev["low"]
-    return _grade_from_score(score - extra_penalty)
+    return _grade_from_score(score - extra_penalty, t)
 
 
 def _top_findings(items, key=lambda x: x.user_principal_name, limit: int = 6) -> list[dict]:
@@ -220,7 +230,7 @@ def _top_findings(items, key=lambda x: x.user_principal_name, limit: int = 6) ->
     ]
 
 
-def build_groups_view(dataset: Dataset) -> dict:
+def build_groups_view(dataset: Dataset, t: Translator | None = None) -> dict:
     """Charakterystyka warstwy GRUP — agregaty i spostrzeżenia. Wszystko z datasetu."""
     groups = dataset.groups
     sev = _sev_counts(groups)
@@ -248,7 +258,7 @@ def build_groups_view(dataset: Dataset) -> dict:
             role_freq[r.role_name] = role_freq.get(r.role_name, 0) + 1
     roles_via_groups = sorted(role_freq.items(), key=lambda kv: -kv[1])
 
-    grade, note = _grade_from_sev(sev, extra_penalty=10 * len(priv_groups))
+    grade, note = _grade_from_sev(sev, extra_penalty=10 * len(priv_groups), t=t)
 
     return {
         "group_total": len(groups),
@@ -277,12 +287,12 @@ def build_groups_view(dataset: Dataset) -> dict:
     }
 
 
-def build_apps_view(dataset: Dataset) -> dict:
+def build_apps_view(dataset: Dataset, t: Translator | None = None) -> dict:
     """Charakterystyka warstwy APLIKACJI — poświadczenia, uprawnienia, własność."""
     apps = dataset.applications
     sev = _sev_counts(apps)
 
-    high_risk_apps = [a for a in apps if a.high_risk_permissions]
+    high_risk_apps = [a for a in apps if a.high_risk_app_permissions]
     expired = [a for a in apps if any(c.expired for c in a.credentials)]
     expiring = [
         a
@@ -298,11 +308,11 @@ def build_apps_view(dataset: Dataset) -> dict:
     # Najczęstsze uprzywilejowane uprawnienia aplikacyjne w tenancie (insight: gdzie ryzyko skupia się).
     perm_freq: dict[str, int] = {}
     for a in apps:
-        for p in a.high_risk_permissions:
+        for p in a.high_risk_app_permissions:
             perm_freq[p.permission] = perm_freq.get(p.permission, 0) + 1
     top_permissions = sorted(perm_freq.items(), key=lambda kv: -kv[1])
 
-    grade, note = _grade_from_sev(sev, extra_penalty=10 * len(high_risk_apps))
+    grade, note = _grade_from_sev(sev, extra_penalty=10 * len(high_risk_apps), t=t)
 
     return {
         "app_total": len(apps),
@@ -318,7 +328,7 @@ def build_apps_view(dataset: Dataset) -> dict:
         "high_risk_apps": [
             {
                 "name": a.display_name,
-                "perms": ", ".join(sorted({p.permission for p in a.high_risk_permissions})),
+                "perms": ", ".join(sorted({p.permission for p in a.high_risk_app_permissions})),
             }
             for a in sorted(high_risk_apps, key=lambda a: -a.review_score)
         ],
@@ -331,13 +341,14 @@ def build_apps_view(dataset: Dataset) -> dict:
 _SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 
-def build_posture(dataset: Dataset) -> dict | None:
+def build_posture(dataset: Dataset, t: Translator | None = None) -> dict | None:
     """Postawa konfiguracyjna tenanta (1.3): Conditional Access + polityki tenanta.
 
     To odpowiedź na 'DLACZEGO findings per-obiekt w ogóle występują': udane legacy auth
     bierze się z braku polityki blokującej, illicit consent z otwartej polityki zgód itd.
     Zwraca None, gdy skan nie zbierał caPolicies/tenantPolicies (stare datasety 1.x).
     """
+    tr = t or Translator()
     collected = set(dataset.scan_context.collectors_run)
     if "caPolicies" not in collected and "tenantPolicies" not in collected:
         return None
@@ -347,6 +358,7 @@ def build_posture(dataset: Dataset) -> dict | None:
     enabled = [p for p in ca if p.enabled]
     report_only = [p for p in ca if p.report_only]
     mfa_policies = [p for p in enabled if p.requires_mfa]
+    broad_mfa = [p for p in mfa_policies if p.is_broad]
     legacy_block = [p for p in enabled if p.blocks_legacy_auth]
 
     # Konta z flagą wykluczenia z MFA / nieobsłużonym ryzykiem (scoring już policzony).
@@ -366,75 +378,43 @@ def build_posture(dataset: Dataset) -> dict | None:
 
     if "caPolicies" in collected:
         sec_def_on = bool(tp and tp.security_defaults_enabled)
-        if not mfa_policies and not sec_def_on:
-            _f(
-                "critical",
-                "Żadna włączona polityka Conditional Access nie wymaga MFA, a security "
-                "defaults są wyłączone — tenant nie wymusza MFA na nikim. Rejestracje MFA "
-                "widoczne w module Konta są wtedy tylko deklaracją.",
-            )
+        if not broad_mfa and not sec_def_on:
+            # Brak SZEROKIEJ polityki MFA (wszyscy użytkownicy + wszystkie aplikacje).
+            # Jeśli istnieją wyłącznie WĄSKIE polityki (jedna aplikacja / grupa pilotażowa),
+            # to nie pełne "brak MFA", ale i NIE pass — większość logowań może być niechroniona.
+            # Bez żadnej polityki MFA i bez security defaults = krytyczne.
+            if mfa_policies:
+                _f("high", tr.t("posture.mfa_narrow", count=len(mfa_policies)))
+            else:
+                _f("critical", tr.t("posture.no_mfa_policy"))
         if not legacy_block:
             sev = "high" if legacy_success else ("medium" if legacy_attempts else "low")
             note = (
-                " W logach widać UDANE logowania legacy — to bezpośrednia przyczyna."
+                tr.t("posture.legacy_block.note_success")
                 if legacy_success
-                else (" W logach widać próby legacy." if legacy_attempts else "")
+                else (tr.t("posture.legacy_block.note_attempts") if legacy_attempts else "")
             )
-            _f(
-                sev,
-                "Brak włączonej polityki Conditional Access blokującej legacy "
-                f"authentication.{note} Dodaj politykę 'block' dla clientAppTypes "
-                "exchangeActiveSync/other.",
-            )
+            _f(sev, tr.t("posture.legacy_block", note=note))
         if report_only:
             names = ", ".join(f"'{p.display_name}'" for p in report_only[:3])
-            _f(
-                "medium",
-                f"{len(report_only)} polityk CA w trybie report-only ({names}"
-                f"{', …' if len(report_only) > 3 else ''}) — raportują, ale NICZEGO nie "
-                "wymuszają. Zweryfikuj, czy to świadomy etap pilotażu.",
-            )
+            more = ", …" if len(report_only) > 3 else ""
+            _f("medium", tr.t("posture.report_only", count=len(report_only), names=names, more=more))
         if mfa_excluded:
-            _f(
-                "high",
-                f"{len(mfa_excluded)} kont wykluczonych z polityk wymagających MFA — "
-                "szczegóły w kartach kont (reguła CA_MFA_EXCLUDED). Wykluczenia bywają "
-                "zasadne (break-glass), ale muszą być policzalne i monitorowane.",
-            )
+            _f("high", tr.t("posture.mfa_excluded", count=len(mfa_excluded)))
 
     if tp is not None:
         if tp.users_can_consent_to_apps:
-            _f(
-                "medium",
-                "Użytkownicy mogą samodzielnie nadawać zgody aplikacjom — klasyczny wektor "
-                "'illicit consent grant'. Rozważ admin consent workflow.",
-            )
+            _f("medium", tr.t("posture.users_consent"))
         if tp.users_can_register_apps:
-            _f(
-                "low",
-                "Użytkownicy mogą rejestrować własne aplikacje w tenancie — każda rejestracja "
-                "to potencjalny nowy punkt wejścia. Rozważ ograniczenie do wyznaczonych ról.",
-            )
+            _f("low", tr.t("posture.users_register"))
         if tp.guest_user_access == "memberLevel":
-            _f(
-                "medium",
-                "Goście mają dostęp do katalogu na poziomie członka (guestUserRoleId = "
-                "member-level) — widzą pełny katalog. Rekomendowany poziom: 'restricted'.",
-            )
+            _f("medium", tr.t("posture.guest_member_level"))
         if tp.weak_auth_methods_enabled:
             methods = ", ".join(tp.weak_auth_methods_enabled)
-            _f(
-                "low",
-                f"Włączone słabe metody uwierzytelniania: {methods} — podatne na SIM-swap / "
-                "phishing. Preferuj Authenticator / FIDO2 i wygaszaj SMS/Voice.",
-            )
+            _f("low", tr.t("posture.weak_methods", methods=methods))
 
     if risky_users:
-        _f(
-            "high",
-            f"{len(risky_users)} kont z NIEOBSŁUŻONYM ryzykiem w Identity Protection "
-            "(atRisk/confirmedCompromised) — alerty wiszą bez reakcji.",
-        )
+        _f("high", tr.t("posture.risky_users", count=len(risky_users)))
 
     findings.sort(key=lambda f: _SEV_RANK[f["severity"]])
     return {
@@ -443,15 +423,97 @@ def build_posture(dataset: Dataset) -> dict | None:
         "ca_enabled": len(enabled),
         "ca_report_only": len(report_only),
         "ca_mfa_policies": len(mfa_policies),
+        "ca_mfa_broad": len(broad_mfa),
         "ca_legacy_block": len(legacy_block),
         "mfa_excluded_count": len(mfa_excluded),
         "risky_user_count": len(risky_users),
+        # Konkretne konta SŁABO objęte CA (wykluczone z polityk MFA) i z nieobsłużonym ryzykiem —
+        # do pokazania imiennie w podsumowaniu / zakładce CA (kogo to dotyczy).
+        "mfa_excluded_upns": sorted(a.user_principal_name for a in mfa_excluded)[:25],
+        "risky_upns": sorted(a.user_principal_name for a in risky_users)[:25],
         "tenant_policies": tp,
         "findings": findings,
     }
 
 
-def build_escalation_paths(dataset: Dataset, limit: int = 12) -> list[dict]:
+def build_ca_view(dataset: Dataset, t: Translator | None = None) -> dict:
+    """Widok Conditional Access do zakładki: polityki rozbite na czytelne pola z ROZWIĄZANYMI
+    nazwami (kto podlega / kto wykluczony — po id konta/grupy), warunki i kontrole dostępu,
+    plus `facet` do interaktywnego filtrowania kafelkami (stan/MFA/legacy/wykluczenia)."""
+    tr = t or Translator()
+    collected = "caPolicies" in set(dataset.scan_context.collectors_run)
+    acc = {a.id: (a.user_principal_name or a.display_name) for a in dataset.accounts}
+    grp = {g.id: g.display_name for g in dataset.groups}
+    # Wartości specjalne Graph w include/exclude — zostawiamy dosłownie (to nie id).
+    special = {"All", "None", "GuestsOrExternalUsers"}
+
+    def names(ids: list[str], mp: dict[str, str]) -> list[str]:
+        out: list[str] = []
+        for i in ids:
+            if i in special:
+                out.append(i)
+            elif i in mp:
+                out.append(mp[i])
+            else:
+                out.append(i[:8] + "…" if len(i) > 9 else i)
+        return out
+
+    pols: list[dict] = []
+    for p in dataset.ca_policies:
+        state = "enabled" if p.enabled else ("reportonly" if p.report_only else "disabled")
+        facet = [state]
+        if p.requires_mfa:
+            facet.append("mfa")
+        if p.blocks_legacy_auth:
+            facet.append("legacy")
+        if p.exclude_users or p.exclude_groups or p.exclude_roles:
+            facet.append("excluded")
+        pols.append(
+            {
+                "id": p.id,
+                "name": p.display_name,
+                "state": state,
+                "requires_mfa": p.requires_mfa,
+                "blocks_legacy": p.blocks_legacy_auth,
+                "grant_controls": p.grant_controls,
+                "client_app_types": p.client_app_types,
+                "modified": p.modified_date_time,
+                "include_users": names(p.include_users, acc),
+                "exclude_users": names(p.exclude_users, acc),
+                "include_groups": names(p.include_groups, grp),
+                "exclude_groups": names(p.exclude_groups, grp),
+                "include_roles": len(p.include_roles),
+                "exclude_roles": len(p.exclude_roles),
+                "covers_all_users": p.covers_all_users,
+                "covers_all_apps": p.covers_all_apps,
+                "is_broad": p.is_broad,
+                # Włączona polityka, która COŚ wymusza (MFA / blokada legacy), ale wąsko —
+                # czerwona flaga zakresu (np. „Require MFA" celujące w jedną aplikację).
+                "narrow_enforced": p.enabled and (p.requires_mfa or p.blocks_legacy_auth) and not p.is_broad,
+                "apps_label": (
+                    tr.t("tmpl.ca.scope_all_apps") if p.covers_all_apps
+                    else tr.t("tmpl.ca.scope_apps_n", n=len(p.include_applications))
+                ),
+                "facet": " ".join(facet),
+            }
+        )
+    ca = dataset.ca_policies
+    return {
+        "collected": collected,
+        "policies": pols,
+        "total": len(ca),
+        "enabled": sum(1 for p in ca if p.enabled),
+        "report_only": sum(1 for p in ca if p.report_only),
+        "disabled": sum(1 for p in ca if not p.enabled and not p.report_only),
+        "mfa": sum(1 for p in ca if p.requires_mfa and p.enabled),
+        "legacy": sum(1 for p in ca if p.blocks_legacy_auth and p.enabled),
+        "excluded": sum(
+            1 for p in ca if p.exclude_users or p.exclude_groups or p.exclude_roles
+        ),
+    }
+
+
+def build_escalation_paths(dataset: Dataset, t: Translator | None = None, limit: int = 12) -> list[dict]:
     """Konkretne, imienne łańcuchy eskalacji do pełnej kontroli nad tenantem.
 
     Zamiast samego licznika — gotowe ścieżki ataku z dowodami z logów sign-in:
@@ -462,27 +524,37 @@ def build_escalation_paths(dataset: Dataset, limit: int = 12) -> list[dict]:
     Każdy element to {kind, severity, title, steps[], evidence}. Korzystamy z tego samego
     indeksu korelacyjnego, co scoring, więc raport mówi dokładnie to samo, co reguły.
     """
-    idx = CorrelationIndex.build(dataset)
+    tr = t or Translator()
+    idx = CorrelationIndex.build(dataset, tr)
     paths: list[dict] = []
 
-    def _sev(weak: list[str]) -> str:
+    def _sev(acc: Account) -> str:
         # Udane legacy / ryzykowne logowania = realny dowód; sam brak MFA = wysokie ryzyko.
-        return "critical" if any("legacy" in w or "ryzykown" in w for w in weak) else "high"
+        # Liczymy z pól konta (nie z lokalizowanego tekstu), żeby było językowo-niezależne.
+        hard = bool(
+            acc.risky_user is not None
+            or (acc.activity and (acc.activity.legacy_success_count or acc.activity.risky_sign_in_count))
+        )
+        return "critical" if hard else "high"
 
     # (1) słabo chronione konta z BEZPOŚREDNIĄ rolą uprzywilejowaną
     for acc in dataset.accounts:
         if not acc.has_privileged_role:
             continue
-        weak = account_weaknesses(acc)
+        weak = account_weaknesses(acc, tr)
         if not weak:
             continue
         roles = ", ".join(sorted({r.role_name for r in acc.roles if r.is_privileged}))
         paths.append(
             {
                 "kind": "identity",
-                "severity": _sev(weak),
-                "title": f"{acc.user_principal_name} — admin bez ochrony",
-                "steps": [acc.user_principal_name, f"rola: {roles}", "pełny dostęp"],
+                "severity": _sev(acc),
+                "title": tr.t("escalation.identity.title", upn=acc.user_principal_name),
+                "steps": [
+                    acc.user_principal_name,
+                    tr.t("escalation.step.role", roles=roles),
+                    tr.t("escalation.step.full_access"),
+                ],
                 "evidence": ", ".join(weak),
             }
         )
@@ -492,19 +564,19 @@ def build_escalation_paths(dataset: Dataset, limit: int = 12) -> list[dict]:
         macc = idx.accounts_by_id.get(uid)
         if macc is None:
             continue
-        weak = account_weaknesses(macc)
+        weak = account_weaknesses(macc, tr)
         if not weak:
             continue
         for g in groups:
             paths.append(
                 {
                     "kind": "group",
-                    "severity": _sev(weak),
-                    "title": f"{macc.user_principal_name} → {g.display_name}",
+                    "severity": _sev(macc),
+                    "title": tr.t("escalation.group.title", upn=macc.user_principal_name, group=g.display_name),
                     "steps": [
                         macc.user_principal_name,
-                        f"członek grupy {g.display_name}",
-                        f"rola: {priv_role_names(g)}",
+                        tr.t("escalation.step.group_member", group=g.display_name),
+                        tr.t("escalation.step.role", roles=priv_role_names(g)),
                     ],
                     "evidence": ", ".join(weak),
                 }
@@ -512,26 +584,26 @@ def build_escalation_paths(dataset: Dataset, limit: int = 12) -> list[dict]:
 
     # (3) słabo chronieni właściciele aplikacji z uprawnieniami app-only wysokiego ryzyka
     for app in dataset.applications:
-        if not app.high_risk_permissions:
+        if not app.high_risk_app_permissions:
             continue
-        perms = ", ".join(sorted({p.permission for p in app.high_risk_permissions}))
+        perms = ", ".join(sorted({p.permission for p in app.high_risk_app_permissions}))
         for owner in app.owners:
             oacc = idx.resolve_owner(owner)
             if oacc is None:
                 continue
-            weak = account_weaknesses(oacc)
+            weak = account_weaknesses(oacc, tr)
             if not weak:
                 continue
             paths.append(
                 {
                     "kind": "app",
-                    "severity": _sev(weak),
-                    "title": f"{oacc.user_principal_name} → {app.display_name}",
+                    "severity": _sev(oacc),
+                    "title": tr.t("escalation.app.title", upn=oacc.user_principal_name, app=app.display_name),
                     "steps": [
                         oacc.user_principal_name,
-                        f"właściciel {app.display_name}",
-                        "dodanie sekretu",
-                        f"app-only: {perms}",
+                        tr.t("escalation.step.app_owner", app=app.display_name),
+                        tr.t("escalation.step.add_secret"),
+                        tr.t("escalation.step.app_only", perms=perms),
                     ],
                     "evidence": ", ".join(weak),
                 }
@@ -541,7 +613,7 @@ def build_escalation_paths(dataset: Dataset, limit: int = 12) -> list[dict]:
     return paths[:limit]
 
 
-def build_action_plan(dataset: Dataset, limit: int = 12) -> list[dict]:
+def build_action_plan(dataset: Dataset, t: Translator | None = None, limit: int = 12) -> list[dict]:
     """Plan działań: wszystkie flagi z 3 modułów zagregowane per reguła.
 
     Zamienia setki pojedynczych ustaleń w krótką, priorytetyzowaną listę "co zrobić
@@ -549,10 +621,11 @@ def build_action_plan(dataset: Dataset, limit: int = 12) -> list[dict]:
     obiektów, sumą punktów i przykładami (id -> głęboki link do karty w raporcie).
     Kolejność: severity, potem suma punktów (= skala problemu w tym tenancie).
     """
+    tr = t or Translator()
     sources = (
-        ("Konta", "users", dataset.accounts, lambda a: a.user_principal_name),
-        ("Grupy", "groups", dataset.groups, lambda g: g.display_name),
-        ("Aplikacje", "apps", dataset.applications, lambda a: a.display_name),
+        (tr.t("community.module.users"), "users", dataset.accounts, lambda a: a.user_principal_name),
+        (tr.t("community.module.groups"), "groups", dataset.groups, lambda g: g.display_name),
+        (tr.t("community.module.apps"), "apps", dataset.applications, lambda a: a.display_name),
     )
     buckets: dict[tuple[str, str], dict] = {}
     for module, key, items, name_of in sources:
@@ -588,6 +661,7 @@ def build_overview(
     groups_view: dict,
     apps_view: dict,
     posture: dict | None = None,
+    t: Translator | None = None,
 ) -> dict:
     """Zbiorcze streszczenie dla zarządu — postawa ŁĄCZNA + spostrzeżenia krzyżowe.
 
@@ -596,6 +670,7 @@ def build_overview(
     Postawa konfiguracyjna (1.3, build_posture) dokłada karę do oceny: luka w konfiguracji
     (brak wymuszenia MFA, brak blokady legacy) waży, nawet gdy obiekty wyglądają czysto.
     """
+    tr = t or Translator()
     combined_sev = {
         s: community["sev_counts"].get(s, 0)
         + groups_view["sev_counts"].get(s, 0)
@@ -614,6 +689,7 @@ def build_overview(
         + 8 * groups_view["priv_group_count"]
         + 8 * apps_view["high_risk_count"]
         + posture_penalty,
+        t=tr,
     )
 
     # Ścieżki eskalacji: konta uprzywilejowane bez MFA + grupy nadające role + aplikacje z zapisem do katalogu.
@@ -625,39 +701,19 @@ def build_overview(
 
     insights: list[str] = []
     if community["priv_no_mfa_count"]:
-        insights.append(
-            f"{community['priv_no_mfa_count']} kont uprzywilejowanych BEZ MFA — bezpośredni cel przejęcia."
-        )
+        insights.append(tr.t("insight.priv_no_mfa", count=community["priv_no_mfa_count"]))
     if groups_view["priv_group_count"]:
-        insights.append(
-            f"{groups_view['priv_group_count']} grup nadaje role uprzywilejowane — dostęp przez członkostwo, "
-            "często poza radarem przeglądów ról."
-        )
+        insights.append(tr.t("insight.priv_groups", count=groups_view["priv_group_count"]))
     if apps_view["high_risk_count"]:
-        insights.append(
-            f"{apps_view['high_risk_count']} aplikacji ma uprawnienia app-only wysokiego ryzyka — działają bez "
-            "użytkownika i omijają MFA."
-        )
+        insights.append(tr.t("insight.high_risk_apps", count=apps_view["high_risk_count"]))
     if apps_view["expired_count"]:
-        insights.append(
-            f"{apps_view['expired_count']} aplikacji z wygasłym poświadczeniem na włączonym koncie — "
-            "martwy kod lub zepsuta integracja do sprzątnięcia."
-        )
+        insights.append(tr.t("insight.expired_apps", count=apps_view["expired_count"]))
     if groups_view["license_blast"]:
-        insights.append(
-            f"Licencjonowanie grupowe obejmuje ~{groups_view['license_blast']} przypisań — zmiana w jednej grupie "
-            "rozlewa się szeroko."
-        )
+        insights.append(tr.t("insight.license_blast", count=groups_view["license_blast"]))
     if community["legacy_success_count"]:
-        insights.append(
-            f"{community['legacy_success_count']} kont z UDANYM legacy auth — realne ominięcie MFA, "
-            "wymaga pilnej weryfikacji źródła."
-        )
+        insights.append(tr.t("insight.legacy_success", count=community["legacy_success_count"]))
     elif community["legacy_auth_count"]:
-        insights.append(
-            f"{community['legacy_auth_count']} kont z próbami legacy auth — wszystkie zablokowane "
-            "(Conditional Access działa); zweryfikuj listę protokołów."
-        )
+        insights.append(tr.t("insight.legacy_attempts", count=community["legacy_auth_count"]))
     if posture:
         # Konfiguracja tłumaczy objawy — najcięższe luki postawy wprost do streszczenia.
         for f in posture["findings"]:
@@ -673,27 +729,27 @@ def build_overview(
         "modules": [
             {
                 "key": "users",
-                "label": "Konta",
+                "label": tr.t("community.module.users"),
                 "total": community["account_total"],
                 "grade": community["grade"],
                 "sev": community["sev_counts"],
-                "headline": (community["top_findings"][0]["headline"] if community["top_findings"] else "Brak istotnych ryzyk"),
+                "headline": (community["top_findings"][0]["headline"] if community["top_findings"] else tr.t("community.headline.none")),
             },
             {
                 "key": "groups",
-                "label": "Grupy",
+                "label": tr.t("community.module.groups"),
                 "total": groups_view["group_total"],
                 "grade": groups_view["grade"],
                 "sev": groups_view["sev_counts"],
-                "headline": (groups_view["top_findings"][0]["headline"] if groups_view["top_findings"] else "Brak istotnych ryzyk"),
+                "headline": (groups_view["top_findings"][0]["headline"] if groups_view["top_findings"] else tr.t("community.headline.none")),
             },
             {
                 "key": "apps",
-                "label": "Aplikacje",
+                "label": tr.t("community.module.apps"),
                 "total": apps_view["app_total"],
                 "grade": apps_view["grade"],
                 "sev": apps_view["sev_counts"],
-                "headline": (apps_view["top_findings"][0]["headline"] if apps_view["top_findings"] else "Brak istotnych ryzyk"),
+                "headline": (apps_view["top_findings"][0]["headline"] if apps_view["top_findings"] else tr.t("community.headline.none")),
             },
         ],
     }

@@ -62,7 +62,9 @@ TATTOO_LOGO = r"""                                             :       ====:.-:.
 
 LINKEDIN = "https://www.linkedin.com/in/daniel-b-4295a421a/"
 GITHUB = "https://github.com/NewLife-Org/AccessGuy"
-CAPTION = 'AccessGuy · Read-only przegląd uprawnień Entra ID · Daniel "NewLife" Budyn'
+YOUTUBE = "https://www.youtube.com/@NewLife-org-pl"
+# Język-neutralny fallback (EN = język referencyjny). Runtime woła tłumacza: t('branding.caption').
+CAPTION = 'AccessGuy · Read-only Microsoft Entra ID access review · Daniel "NewLife" Budyn'
 
 
 def banner() -> str:

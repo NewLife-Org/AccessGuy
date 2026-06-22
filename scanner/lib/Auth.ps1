@@ -26,7 +26,7 @@ function Get-AgConnectArgs {
 
     switch ($Mode) {
         'Delegated' {
-            Write-AgLog -Level INFO -Message "Auth: delegated (interactive). Zaloguj się jako operator z rolą Global Reader."
+            Write-AgLog -Level INFO -Message (T 'auth.delegated')
             # ContextScope=Process => token TYLKO w pamięci procesu (bez zapisu na dysk).
             # Na Linux to omija GNOME keyring/libsecret (źródło natrętnego promptu o keyring).
             $params = @{ Scopes = (Get-AgRequiredScopes); NoWelcome = $true; ContextScope = 'Process' }
@@ -34,22 +34,21 @@ function Get-AgConnectArgs {
             if ($ClientId)  { $params.ClientId = $ClientId }
             if ($DeviceCode){
                 $params.UseDeviceAuthentication = $true
-                Write-AgLog -Level INFO -Message "Logowanie kodem: za chwilę pojawi się URL i KOD (potwierdzasz w Authenticatorze). Czekaj kilka sekund..."
+                Write-AgLog -Level INFO -Message (T 'auth.devicecode')
             }
             return $params
         }
         'App' {
             if ($UseManagedIdentity) {
-                Write-AgLog -Level INFO -Message "Auth: app-only (Managed Identity)."
+                Write-AgLog -Level INFO -Message (T 'auth.mi')
                 return @{ Identity = $true; NoWelcome = $true }
             }
             if ($CertThumbprint) {
-                if (-not $TenantId -or -not $ClientId) { throw "App + certyfikat wymaga -TenantId i -ClientId." }
-                Write-AgLog -Level INFO -Message "Auth: app-only (certyfikat)."
+                if (-not $TenantId -or -not $ClientId) { throw (T 'auth.cert_needs') }
+                Write-AgLog -Level INFO -Message (T 'auth.cert')
                 return @{ TenantId = $TenantId; ClientId = $ClientId; CertificateThumbprint = $CertThumbprint; NoWelcome = $true }
             }
-            throw "Tryb App wymaga -UseManagedIdentity albo -CertThumbprint (+ -TenantId -ClientId). " +
-                  "Client secret świadomie pominięty w szkielecie — jeśli musisz, pobierz go z Key Vault i użyj -ClientSecretCredential."
+            throw (T 'auth.app_needs')
         }
     }
 }
@@ -66,7 +65,7 @@ function Test-AgPreflight {
     $required = Get-AgRequiredScopes
     $missing = $required | Where-Object { $_ -notin $granted }
     if ($missing) {
-        Write-AgLog -Level WARN -Message "Brakujące scope'y (sekcje zostaną pominięte): $($missing -join ', ')"
+        Write-AgLog -Level WARN -Message ((T 'auth.missing_scopes') -f ($missing -join ', '))
     }
 
     # Operator (delegated) lub null (app-only).
@@ -80,10 +79,10 @@ function Test-AgPreflight {
         $premium = ($probe.Count -gt 0 -and $null -ne (Get-AgProp $probe[0] 'signInActivity'))
     }
     catch {
-        Write-AgLog -Level WARN -Message "Nie udało się potwierdzić P1/P2 — scoring nieaktywności będzie best-effort."
+        Write-AgLog -Level WARN -Message (T 'auth.p2_unconfirmed')
     }
     if (-not $premium) {
-        Write-AgLog -Level WARN -Message "Brak P1/P2: signInActivity będzie puste."
+        Write-AgLog -Level WARN -Message (T 'auth.no_p2')
     }
 
     [pscustomobject]@{
@@ -102,7 +101,7 @@ function Get-AgVerifiedDomains {
         }
     }
     catch {
-        Write-AgLog -Level WARN -Message "Nie udało się pobrać verifiedDomains: $($_.Exception.Message)"
+        Write-AgLog -Level WARN -Message ((T 'auth.domains_fail') -f $_.Exception.Message)
     }
     return @()
 }

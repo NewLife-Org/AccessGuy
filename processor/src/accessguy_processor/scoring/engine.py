@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Callable, Protocol
 
+from ..i18n import Translator
 from ..models import Account, Application, Dataset, Group, ReviewFlag, Severity
 from ..rules import Rubric, Rule, load_rubric
 from .correlation import CorrelationIndex
@@ -76,8 +77,9 @@ def score_account(
     rubric: Rubric,
     generated_at: datetime,
     index: CorrelationIndex | None = None,
+    t: Translator | None = None,
 ) -> Account:
-    ctx = ScoringContext(rubric=rubric, generated_at=generated_at, index=index)
+    ctx = ScoringContext(rubric=rubric, generated_at=generated_at, index=index, t=t or Translator())
     _score_entity(acc, rubric.rules, PREDICATES, ctx, rubric.severity_bands)
     return acc
 
@@ -87,8 +89,9 @@ def score_group(
     rubric: Rubric,
     generated_at: datetime,
     index: CorrelationIndex | None = None,
+    t: Translator | None = None,
 ) -> Group:
-    ctx = ScoringContext(rubric=rubric, generated_at=generated_at, index=index)
+    ctx = ScoringContext(rubric=rubric, generated_at=generated_at, index=index, t=t or Translator())
     _score_entity(grp, rubric.group_rules, GROUP_PREDICATES, ctx, rubric.severity_bands)
     return grp
 
@@ -98,23 +101,27 @@ def score_application(
     rubric: Rubric,
     generated_at: datetime,
     index: CorrelationIndex | None = None,
+    t: Translator | None = None,
 ) -> Application:
-    ctx = ScoringContext(rubric=rubric, generated_at=generated_at, index=index)
+    ctx = ScoringContext(rubric=rubric, generated_at=generated_at, index=index, t=t or Translator())
     _score_entity(app, rubric.app_rules, APP_PREDICATES, ctx, rubric.severity_bands)
     return app
 
 
-def score_dataset(dataset: Dataset, rubric: Rubric | None = None) -> Dataset:
-    rb = rubric or load_rubric()
+def score_dataset(
+    dataset: Dataset, rubric: Rubric | None = None, t: Translator | None = None
+) -> Dataset:
+    tr = t or Translator()
+    rb = rubric or load_rubric(lang=tr.lang)
     # Indeks korelacyjny budowany RAZ — reguły mogą patrzeć w poprzek modułów
     # (członkostwa grup, właściciele aplikacji, przypisania) bez O(n²) skanów.
-    index = CorrelationIndex.build(dataset)
+    index = CorrelationIndex.build(dataset, tr)
     for acc in dataset.accounts:
-        score_account(acc, rb, dataset.generated_at, index)
+        score_account(acc, rb, dataset.generated_at, index, tr)
     for grp in dataset.groups:
-        score_group(grp, rb, dataset.generated_at, index)
+        score_group(grp, rb, dataset.generated_at, index, tr)
     for app in dataset.applications:
-        score_application(app, rb, dataset.generated_at, index)
+        score_application(app, rb, dataset.generated_at, index, tr)
     # sortuj malejąco po ryzyku — najpierw to, co wymaga uwagi
     dataset.accounts.sort(key=lambda a: -a.review_score)
     dataset.groups.sort(key=lambda g: -g.review_score)

@@ -42,6 +42,9 @@ param(
     [ValidateSet('Users', 'Groups', 'Apps', 'All')]
     [string]$Scope = 'All',         # zakres: które moduły zebrać (jeden skan, wspólny dataset 1.2)
 
+    [ValidateSet('en', 'pl')]
+    [string]$Lang = 'en',           # język lekkiego raportu (ReportLite). Domyślnie angielski.
+
     [switch]$LiteReport
 )
 
@@ -50,6 +53,9 @@ Set-StrictMode -Version Latest
 
 # --- Załaduj bibliotekę (dot-source, brak ceremonii modułu => łatwy "drop & run") ---
 Get-ChildItem -Path (Join-Path $PSScriptRoot 'lib') -Filter '*.ps1' | ForEach-Object { . $_.FullName }
+
+# i18n: ustaw język sesji (Strings.ps1 z lib/ definiuje $script:AgStrings i helper T).
+$script:AgLang = $Lang
 
 $ScannerVersion = '0.1.0'
 
@@ -66,15 +72,15 @@ try {
         -CertThumbprint $CertThumbprint -UseManagedIdentity:$UseManagedIdentity -DeviceCode:$DeviceCode
     Connect-MgGraph @connArgs
     $conn = Get-MgContext
-    if (-not $conn) { throw "Połączenie z Microsoft Graph nie powiodło się." }
-    Write-AgLog -Level OK -Message "Połączono. Tenant: $($conn.TenantId)  ·  AuthType: $($conn.AuthType)"
+    if (-not $conn) { throw (T 'scan.connect_fail') }
+    Write-AgLog -Level OK -Message ((T 'scan.connected') -f $conn.TenantId, $conn.AuthType)
 
     # 2) PREFLIGHT (scope'y, P1/P2, kontekst) ------------------------------------
     $pre = Test-AgPreflight -Connection $conn
 
     # Logowanie się udało => efektowne "wyłonienie" AccessGuy Scanner (sygnał: jedziemy!).
     Show-AgReveal -Caption 'AccessGuy Scanner'
-    Write-AgLog -Level OK -Message "Zalogowano. Zaczynam zbieranie danych (read-only)..."
+    Write-AgLog -Level OK -Message (T 'scan.collecting')
 
     # 3) COLLECT (każdy kolektor zwraca surowe + znormalizowane fragmenty) -------
     # Zakres (Scope) decyduje, które moduły zbieramy. Role są wspólne dla Users i Groups
@@ -86,52 +92,61 @@ try {
     $doGroups = $Scope -in @('Groups', 'All')
     $doApps   = $Scope -in @('Apps', 'All')
     $doRoles  = $doUsers -or $doGroups
-    Write-AgLog -Level INFO -Message "Zakres skanu: $Scope"
+    Write-AgLog -Level INFO -Message ((T 'scan.scope_is') -f $Scope)
 
     $users = @(); $roles = @(); $apps = $null; $mfa = @(); $audit = @(); $signIns = @(); $groups = @()
     $riskyUsers = @(); $spSignIns = @(); $caPolicies = @(); $tenantPolicies = $null
     $collectorsRun = [System.Collections.Generic.List[string]]::new()
 
+    # Mapa konektorów (endpoint Graph + po co) dla zakresu skanu — czytelna legenda przed akcją.
+    $mapNames = [System.Collections.Generic.List[string]]::new()
+    if ($doUsers)  { $mapNames.AddRange([string[]]@('users', 'authMethods', 'audit', 'signIns', 'riskyUsers')) }
+    if ($doRoles)  { $mapNames.Add('roles') }
+    if ($doGroups) { $mapNames.Add('groups') }
+    if ($doApps)   { $mapNames.AddRange([string[]]@('apps', 'spSignIns')) }
+    $mapNames.Add('caPolicies')
+    Show-AgConnectorMap -Names @($mapNames.ToArray())
+
     if ($doUsers) {
         $users   = Get-AgUsers  -PremiumLicense:$pre.PremiumLicense -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> złapano kont: {0}" -f @($users).Count)
+        Write-AgHarvest -Message ((T 'scan.got.users') -f @($users).Count)
         $mfa     = Get-AgAuthMethods -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> rejestracji MFA: {0}" -f @($mfa).Count)
+        Write-AgHarvest -Message ((T 'scan.got.mfa') -f @($mfa).Count)
         $audit   = Get-AgAudit  -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> wpisów audytu (PIM + app mgmt): {0}" -f @($audit).Count)
+        Write-AgHarvest -Message ((T 'scan.got.audit') -f @($audit).Count)
         $signIns = Get-AgSignIns -Warnings $warnings -Days $SignInWindowDays
-        Write-AgLog -Level OK -Message ("  \-> logowań ({0} dni): {1}" -f $SignInWindowDays, @($signIns).Count)
+        Write-AgHarvest -Message ((T 'scan.got.signins') -f $SignInWindowDays, @($signIns).Count)
         $riskyUsers = Get-AgRiskyUsers -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> kont z nieobsłużonym ryzykiem (Identity Protection): {0}" -f @($riskyUsers).Count)
+        Write-AgHarvest -Message ((T 'scan.got.risky') -f @($riskyUsers).Count)
         $collectorsRun.AddRange([string[]]@('users', 'authMethods', 'audit', 'signIns', 'riskyUsers'))
     }
     if ($doRoles) {
         $roles   = Get-AgRoles  -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> złapano przypisań ról: {0}" -f @($roles).Count)
+        Write-AgHarvest -Message ((T 'scan.got.roles') -f @($roles).Count)
         $collectorsRun.Add('roles')
     }
     if ($doGroups) {
         $groups  = Get-AgGroups -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> złapano grup: {0}" -f @($groups).Count)
+        Write-AgHarvest -Message ((T 'scan.got.groups') -f @($groups).Count)
         $collectorsRun.Add('groups')
     }
     if ($doApps) {
         $apps    = Get-AgApps   -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> złapano aplikacji/SP: {0}, rejestracji: {1}, zgód OAuth: {2}" -f `
+        Write-AgHarvest -Message ((T 'scan.got.apps') -f `
             @(Get-AgProp $apps 'servicePrincipals').Count, @(Get-AgProp $apps 'applications').Count, @(Get-AgProp $apps 'oauth2Grants').Count)
         $spSignIns = Get-AgSpSignIns -Warnings $warnings
-        Write-AgLog -Level OK -Message ("  \-> aktywności logowań SP: {0}" -f @($spSignIns).Count)
+        Write-AgHarvest -Message ((T 'scan.got.spsignins') -f @($spSignIns).Count)
         $collectorsRun.AddRange([string[]]@('apps', 'applications', 'spSignIns'))
     }
 
     # Polityki tenanta (CA + postawa) — tenant-level, tanie, zbierane przy KAŻDYM zakresie:
     # wykluczenia z CA wzbogacają konta, brak blokady legacy / security defaults idzie do summary.
     $caPolicies = Get-AgCaPolicies -Warnings $warnings
-    Write-AgLog -Level OK -Message ("  \-> polityk Conditional Access: {0}" -f @($caPolicies).Count)
+    Write-AgHarvest -Message ((T 'scan.got.capolicies') -f @($caPolicies).Count)
     $collectorsRun.Add('caPolicies')
     $tenantPolicies = Get-AgTenantPolicies -Warnings $warnings
     if ($tenantPolicies) {
-        Write-AgLog -Level OK -Message "  \-> postawa tenanta (authorization/security defaults/metody auth) odczytana"
+        Write-AgLog -Level OK -Message (T 'scan.got.posture')
         $collectorsRun.Add('tenantPolicies')
     }
 
@@ -164,13 +179,14 @@ try {
     }
     $null = New-Item -ItemType Directory -Force -Path (Split-Path $OutputPath -Parent)
     $dataset | ConvertTo-Json -Depth 12 | Out-File -FilePath $OutputPath -Encoding utf8
-    Write-AgLog -Level INFO -Message "Dataset zapisany: $OutputPath"
+    Write-AgLog -Level INFO -Message ((T 'scan.dataset_saved') -f $OutputPath)
 
     # 6) (opcjonalnie) LEKKI raport bez Pythona ----------------------------------
+    $liteOut = $null   # musi istnieć przed użyciem w kroku ochrony (StrictMode)
     if ($LiteReport) {
         $liteOut = [System.IO.Path]::ChangeExtension($OutputPath, '.lite.html')
         Export-AccessGuyReportLite -Dataset $dataset -OutputPath $liteOut
-        Write-AgLog -Level INFO -Message "Lekki raport: $liteOut"
+        Write-AgLog -Level INFO -Message ((T 'scan.lite_saved') -f $liteOut)
     }
 
     # 7) PODSUMOWANIE "co złapaliśmy" (hakerski box + podpis NewLife) -------------
@@ -188,13 +204,32 @@ try {
         capolicies   = @($dataset.caPolicies).Count
         riskyusers   = @($riskyUsers).Count
     }
-    Write-AgLog -Level INFO -Message "Dataset: $OutputPath"
-    Write-AgLog -Level OK -Message "Skan zakończony. Następny krok: builder raportu (tryb [2] w NewLife-AccessGuy)."
+    Write-AgLog -Level INFO -Message ((T 'scan.dataset_saved') -f $OutputPath)
+    Write-AgLog -Level OK -Message (T 'scan.done')
+
+    # 8) (OPCJONALNIE) OCHRONA datasetu — wybór użytkownika. Tylko interaktywnie (delegated);
+    # w trybie App (automatyzacja) pomijamy. Informujemy, że builder (tryb [2]) też potrafi
+    # zaszyfrować, oraz że zaszyfrowanie TERAZ uniemożliwi builderowi odczyt datasetu.
+    if ($AuthMode -eq 'Delegated' -and (Get-Command Protect-AgArchive -ErrorAction SilentlyContinue)) {
+        Write-Host ''
+        Write-Host ('  ' + (T 'protect.r1_note')) -ForegroundColor DarkGray
+        if (Read-AgYesNo -Prompt (T 'protect.ask')) {
+            $files = @($OutputPath)
+            if ($liteOut -and (Test-Path -LiteralPath $liteOut)) { $files += $liteOut }
+            $archive = Join-Path (Split-Path $OutputPath -Parent) `
+                ([System.IO.Path]::GetFileNameWithoutExtension($OutputPath) + '_dataset.7z')
+            $res = Protect-AgArchive -Files $files -ArchivePath $archive -RemovePlaintext
+            if ($res.Ok) { Show-AgArchivePassword -Password $res.Password -Archive $res.Archive }
+        }
+        else {
+            Write-AgLog -Level INFO -Message (T 'protect.r1_skipped')
+        }
+    }
 }
 catch {
-    Write-AgLog -Level ERROR -Message "Skan przerwany: $($_.Exception.Message)"
+    Write-AgLog -Level ERROR -Message ((T 'scan.aborted') -f $_.Exception.Message)
     if ("$($_.Exception.Message)" -match '(?i)keyring|secret|libsecret') {
-        Write-AgLog -Level WARN -Message "To problem keyringa Linuksa. Uruchom z logowaniem kodem: ./Invoke-AccessGuyScan.ps1 -DeviceCode  (token nie jest zapisywany na dysk — ContextScope Process)."
+        Write-AgLog -Level WARN -Message (T 'scan.keyring_hint')
     }
     throw
 }

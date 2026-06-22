@@ -15,6 +15,34 @@ import yaml
 _CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "contracts"
 _RULES_PATH = _CONTRACTS_DIR / "rules.yaml"
 
+# Język kanoniczny pliku rules.yaml (tytuły/rekomendacje po polsku). Inne języki dostają
+# overlay `rules.<lang>.yaml` z samymi tytułami/rekomendacjami po id (patrz _apply_overlay).
+_CANONICAL_LANG = "pl"
+
+
+def _apply_overlay(data: dict[str, Any], lang: str) -> dict[str, Any]:
+    """Nakłada overlay rules.<lang>.yaml na bazę: TYLKO title/recommendation po id reguły.
+
+    Logika/punkty/severity/progi NIGDY z overlaya — to zostaje w kanonicznym rules.yaml.
+    Brak overlaya albo brak id w overlayu => zostaje wartość bazowa (kanon PL)."""
+    if lang == _CANONICAL_LANG:
+        return data
+    overlay_path = _CONTRACTS_DIR / f"rules.{lang}.yaml"
+    if not overlay_path.exists():
+        return data
+    overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8")) or {}
+    for section in ("rules", "groupRules", "appRules"):
+        trans = overlay.get(section, {}) or {}
+        for rule in data.get(section, []):
+            tr = trans.get(rule["id"])
+            if not tr:
+                continue
+            if "title" in tr:
+                rule["title"] = tr["title"]
+            if "recommendation" in tr:
+                rule["recommendation"] = tr["recommendation"]
+    return data
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -45,9 +73,10 @@ class Rubric:
         return int(self.thresholds[name])
 
 
-def load_rubric(rules_path: Path | None = None) -> Rubric:
+def load_rubric(rules_path: Path | None = None, lang: str = "en") -> Rubric:
     path = rules_path or _RULES_PATH
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data = _apply_overlay(data, lang)
 
     def _rules(key: str) -> list[Rule]:
         return [

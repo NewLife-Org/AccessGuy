@@ -5,14 +5,14 @@
    - beforeprint rozwija wszystkie karty (zwinięte <details> nie drukują treści),
    - otwiera i podświetla kartę wskazaną w #hash (głębokie linki z raportu summary). #}
 <div class="ag-filterbar" data-agfilter>
-  <input class="filter-search" type="search" placeholder="🔍 Szukaj (nazwa, sygnał, rola…)  —  skrót: /" aria-label="Szukaj">
-  <span class="filter-chip active" data-sev="critical">critical <b class="chip-n"></b></span>
-  <span class="filter-chip active" data-sev="high">high <b class="chip-n"></b></span>
-  <span class="filter-chip active" data-sev="medium">medium <b class="chip-n"></b></span>
-  <span class="filter-chip active" data-sev="low">low <b class="chip-n"></b></span>
-  <span class="filter-chip active" data-sev="info">info <b class="chip-n"></b></span>
-  <button class="filter-btn" type="button" data-act="expand" title="Rozwiń wszystkie widoczne karty">⊞ rozwiń</button>
-  <button class="filter-btn" type="button" data-act="collapse" title="Zwiń wszystkie karty">⊟ zwiń</button>
+  <input class="filter-search" type="search" placeholder="{{ tr('tmpl.filter.search_placeholder') }}" aria-label="{{ tr('tmpl.filter.search_aria') }}">
+  <button type="button" class="filter-chip active" data-sev="critical" aria-pressed="true">critical <b class="chip-n"></b></button>
+  <button type="button" class="filter-chip active" data-sev="high" aria-pressed="true">high <b class="chip-n"></b></button>
+  <button type="button" class="filter-chip active" data-sev="medium" aria-pressed="true">medium <b class="chip-n"></b></button>
+  <button type="button" class="filter-chip active" data-sev="low" aria-pressed="true">low <b class="chip-n"></b></button>
+  <button type="button" class="filter-chip active" data-sev="info" aria-pressed="true">info <b class="chip-n"></b></button>
+  <button class="filter-btn" type="button" data-act="expand" title="{{ tr('tmpl.filter.expand_title') }}">⊞ {{ tr('tmpl.filter.expand') }}</button>
+  <button class="filter-btn" type="button" data-act="collapse" title="{{ tr('tmpl.filter.collapse_title') }}">⊟ {{ tr('tmpl.filter.collapse') }}</button>
   <span class="filter-count"></span>
 </div>
 <script>
@@ -33,8 +33,11 @@
   var search = bar.querySelector('.filter-search');
   var chips = Array.prototype.slice.call(bar.querySelectorAll('.filter-chip'));
   var counter = bar.querySelector('.filter-count');
-  // Karty = wszystkie .acct w dokumencie (jedna lista per raport).
-  var cards = Array.prototype.slice.call(document.querySelectorAll('details.acct'));
+  // Karty ograniczamy do tego MODUŁU (najbliższy .ag-module) — w raporcie połączonym są trzy
+  // listy (zakładki Konta/Grupy/Aplikacje), każdy filtr musi działać tylko na swojej.
+  // Fallback do całego dokumentu, gdyby paska nie owijał .ag-module (dawne standalone).
+  var scope = bar.closest('.ag-module') || document;
+  var cards = Array.prototype.slice.call(scope.querySelectorAll('details.acct'));
 
   function sevOf(card) {
     var m = (card.className.match(/sev-(\w+)/) || [])[1];
@@ -52,6 +55,13 @@
     if (n) n.textContent = sevTotals[c.dataset.sev] || 0;
   });
 
+  // Aktywny "facet" z kafelków (np. guest/active/nomfa/highrisk) — pojedynczy, null = brak.
+  var facet = null;
+
+  function facetOf(card) {
+    return (card.getAttribute('data-facet') || '').toLowerCase().split(/\s+/);
+  }
+
   function apply() {
     var q = (search.value || '').trim().toLowerCase();
     var allowed = {};
@@ -60,14 +70,68 @@
     cards.forEach(function (card) {
       var okSev = allowed[sevOf(card)];
       var okTxt = !q || card.textContent.toLowerCase().indexOf(q) !== -1;
-      var visible = okSev && okTxt;
+      var okFacet = !facet || facetOf(card).indexOf(facet) !== -1;
+      var visible = okSev && okTxt && okFacet;
       card.classList.toggle('hidden', !visible);
       if (visible) shown++;
     });
     if (counter) counter.textContent = shown + ' / ' + cards.length;
   }
-  chips.forEach(function (c) { c.addEventListener('click', function () { c.classList.toggle('active'); apply(); }); });
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      c.classList.toggle('active');
+      c.setAttribute('aria-pressed', c.classList.contains('active') ? 'true' : 'false');
+      apply();
+    });
+  });
   search.addEventListener('input', apply);
+
+  // --- Interaktywne KAFELKI (na górze modułu) — klik filtruje rozpiskę poniżej.
+  //   data-filter-sev=X    -> pokaż tylko severity X (ponowny klik = przywróć wszystkie),
+  //   data-filter-facet=Y  -> pokaż tylko karty z facetem Y (ponowny klik = wyczyść),
+  //   data-filter-clear    -> wyczyść wszystko (wszystkie severity, brak facetu, pusta szukajka).
+  var tiles = Array.prototype.slice.call(
+    scope.querySelectorAll('[data-filter-sev],[data-filter-facet],[data-filter-clear]')
+  );
+  function markTile(active) {
+    tiles.forEach(function (tl) { tl.classList.toggle('tile-active', tl === active); });
+  }
+  function setChips(only) {
+    // only=null -> wszystkie aktywne; only='high' -> tylko 'high' aktywny.
+    chips.forEach(function (c) {
+      var on = !only || c.dataset.sev === only;
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function afterTile() {
+    apply();
+    // Kafelki są NAD rozpiską — przewiń do paska filtra, żeby od razu było widać efekt.
+    if (bar.scrollIntoView) bar.scrollIntoView({ block: 'start' });
+  }
+  tiles.forEach(function (tl) {
+    tl.addEventListener('click', function () {
+      if (tl.hasAttribute('data-filter-clear')) {
+        facet = null; setChips(null); search.value = ''; markTile(null); afterTile(); return;
+      }
+      var sev = tl.getAttribute('data-filter-sev');
+      if (sev) {
+        var isolated = chips.length && chips.every(function (c) {
+          return c.dataset.sev === sev ? c.classList.contains('active') : !c.classList.contains('active');
+        });
+        facet = null;
+        if (isolated) { setChips(null); markTile(null); } else { setChips(sev); markTile(tl); }
+        afterTile(); return;
+      }
+      var f = tl.getAttribute('data-filter-facet');
+      if (f) {
+        if (facet === f) { facet = null; markTile(null); }
+        else { facet = f; setChips(null); markTile(tl); }
+        afterTile(); return;
+      }
+    });
+  });
+
   apply();
 
   // Rozwiń/zwiń: rozwijamy tylko widoczne (po filtrze), zwijamy wszystkie.
@@ -83,6 +147,10 @@
   // Skrót "/" — szybki fokus szukajki (jak na GitHubie).
   document.addEventListener('keydown', function (e) {
     if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+      // W raporcie połączonym jest kilka filtrów (zakładki) — fokusujemy szukajkę TYLKO tej,
+      // której zakładka jest aktywna. Standalone (brak .ag-tabpanel) -> zawsze.
+      var panel = bar.closest('.ag-tabpanel');
+      if (panel && !panel.classList.contains('active')) return;
       e.preventDefault();
       search.focus();
     }

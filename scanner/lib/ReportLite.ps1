@@ -22,10 +22,10 @@ function Get-AgLiteRisk {
     }
 
     if ($Account.category -in @('guest', 'external') -and $hasPriv) { $signals.Add('PRIV+EXTERNAL') }
-    if ($hasPriv -and $Account.mfaRegistered -eq $false)            { $signals.Add('PRIV bez MFA') }
-    if ($null -ne $days -and $days -ge 180)                          { $signals.Add("nieaktywne $days d") }
-    elseif ($null -ne $days -and $days -ge 90)                       { $signals.Add("nieaktywne $days d") }
-    if ($null -eq $Account.lastSignInDateTime -and $Account.accountEnabled) { $signals.Add('nigdy nie logowane') }
+    if ($hasPriv -and $Account.mfaRegistered -eq $false)            { $signals.Add((T 'lite.sig.priv_no_mfa')) }
+    if ($null -ne $days -and $days -ge 180)                          { $signals.Add(((T 'lite.sig.inactive') -f $days)) }
+    elseif ($null -ne $days -and $days -ge 90)                       { $signals.Add(((T 'lite.sig.inactive') -f $days)) }
+    if ($null -eq $Account.lastSignInDateTime -and $Account.accountEnabled) { $signals.Add((T 'lite.sig.never')) }
 
     $level = if ($signals -match 'PRIV') { 'high' } elseif ($signals.Count -gt 0) { 'medium' } else { 'ok' }
     [pscustomobject]@{ Level = $level; Signals = ($signals -join ', '); Days = $days; HasPriv = $hasPriv }
@@ -49,15 +49,16 @@ function Export-AccessGuyReportLite {
   <td>$($a.category)</td>
   <td>$(if ($a.accountEnabled) { 'enabled' } else { 'disabled' })</td>
   <td>$(if ($null -ne $r.Days) { "$($r.Days) d" } else { '—' })</td>
-  <td>$(if ($r.HasPriv) { 'TAK' } else { '' })</td>
+  <td>$(if ($r.HasPriv) { (T 'lite.yes') } else { '' })</td>
   <td style="color:$rowColor;font-weight:600">$($r.Signals)</td>
 </tr>
 "@
     }
 
+    $metaLine = (T 'lite.meta') -f $Dataset.tenant.displayName, $Dataset.generatedAt, $Dataset.scanContext.authMode, $Dataset.accounts.Count
     $html = @"
-<!doctype html><html lang="pl"><head><meta charset="utf-8">
-<title>AccessGuy — raport LITE</title>
+<!doctype html><html lang="$script:AgLang"><head><meta charset="utf-8">
+<title>$(T 'lite.title')</title>
 <style>
   body{background:#0a0a0f;color:#e6e6e6;font-family:Segoe UI,Arial,sans-serif;margin:24px}
   h1{color:#8be9fd} .meta{color:#888;font-size:13px;margin-bottom:16px}
@@ -66,14 +67,14 @@ function Export-AccessGuyReportLite {
   th{color:#bd93f9;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
   .note{margin-top:18px;color:#777;font-size:12px}
 </style></head><body>
-<h1>AccessGuy — raport LITE (fallback bez Pythona)</h1>
-<div class="meta">Tenant: $($Dataset.tenant.displayName) · Wygenerowano: $($Dataset.generatedAt) · Tryb: $($Dataset.scanContext.authMode) · Kont: $($Dataset.accounts.Count)</div>
+<h1>$(T 'lite.h1')</h1>
+<div class="meta">$metaLine</div>
 <table>
-<thead><tr><th>Nazwa</th><th>UPN</th><th>Kategoria</th><th>Status</th><th>Od logowania</th><th>Priv</th><th>Sygnały</th></tr></thead>
+<thead><tr><th>$(T 'lite.col_name')</th><th>$(T 'lite.col_upn')</th><th>$(T 'lite.col_category')</th><th>$(T 'lite.col_status')</th><th>$(T 'lite.col_since')</th><th>$(T 'lite.col_priv')</th><th>$(T 'lite.col_signals')</th></tr></thead>
 <tbody>
 $($rows -join "`n")
 </tbody></table>
-<div class="note">To uproszczony podgląd. Pełny scoring (rules.yaml), severity i rekomendacje + ładny HTML/PDF generuje procesor Python z dataset.json.<br>Autor: Daniel "NewLife" Budyn.</div>
+<div class="note">$(T 'lite.note')</div>
 </body></html>
 "@
 

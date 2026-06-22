@@ -1,0 +1,145 @@
+{# Zakładka CONDITIONAL ACCESS — interaktywne kafelki (klik=filtr) + rozwijane karty polityk
+   (kto podlega / kto wykluczony / co robią / warunki) + konta słabo objęte CA.
+   Wymaga: ca_view, posture. Brak danych => czytelna nota. #}
+<div class="ag-module" data-module="ca">
+
+<section>
+  <h2>{{ tr('tmpl.ca.review_h2') }}</h2>
+  {% if ca_view.collected %}
+  <div class="ag-summary">
+    <button type="button" class="ag-card ag-card-btn" data-cafilter="all"><span class="ag-num">{{ ca_view.total }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.total') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn" data-cafilter="enabled"><span class="ag-num" style="color:var(--good)">{{ ca_view.enabled }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.enabled') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn {{ 'med' if ca_view.report_only }}" data-cafilter="reportonly"><span class="ag-num">{{ ca_view.report_only }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.report_only') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn" data-cafilter="disabled"><span class="ag-num" style="color:var(--muted)">{{ ca_view.disabled }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.disabled') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn {{ 'crit' if not ca_view.mfa }}" data-cafilter="mfa"><span class="ag-num">{{ ca_view.mfa }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.mfa') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn {{ 'crit' if not ca_view.legacy }}" data-cafilter="legacy"><span class="ag-num">{{ ca_view.legacy }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.legacy') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn {{ 'crit' if posture and posture.mfa_excluded_count }}" data-cafilter="excluded"><span class="ag-num">{{ posture.mfa_excluded_count if posture else ca_view.excluded }}</span><span class="ag-lbl">{{ tr('tmpl.ca.card.excluded') }}</span></button>
+  </div>
+
+  <div class="ag-grid">
+    {% if posture and posture.tenant_policies %}
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.posture.tp_h3') }}</h3>
+      {% set tp = posture.tenant_policies %}
+      <p>{{ tr('tmpl.posture.security_defaults') }} <strong>{{ tr('tmpl.val.enabled') if tp.security_defaults_enabled else (tr('tmpl.val.disabled') if tp.security_defaults_enabled is false else '—') }}</strong></p>
+      <p>{{ tr('tmpl.posture.tp_consent') }} <strong class="{{ 'warnv' if tp.users_can_consent_to_apps }}">{{ tr('tmpl.val.allowed') if tp.users_can_consent_to_apps else (tr('tmpl.val.blocked') if tp.users_can_consent_to_apps is false else '—') }}</strong></p>
+      <p>{{ tr('tmpl.posture.tp_register') }} <strong>{{ tr('tmpl.val.allowed') if tp.users_can_register_apps else (tr('tmpl.val.blocked') if tp.users_can_register_apps is false else '—') }}</strong></p>
+      <p>{{ tr('tmpl.posture.tp_guest') }} <strong>{{ tp.guest_user_access or '—' }}</strong>
+        {% if tp.weak_auth_methods_enabled %} · {{ tr('tmpl.posture.tp_weak') }} <strong class="warnv">{{ tp.weak_auth_methods_enabled | join(', ') }}</strong>{% endif %}</p>
+    </div>
+    {% endif %}
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.ca.coverage_h3') }}</h3>
+      {% if posture and posture.mfa_excluded_upns %}
+      <p class="muted" style="margin:0 0 6px">{{ tr('tmpl.ca.excluded_note') }}</p>
+      <ul class="ag-list cols">{% for u in posture.mfa_excluded_upns %}<li class="critv">{{ u }}</li>{% endfor %}</ul>
+      {% else %}<p class="muted">{{ tr('tmpl.ca.excluded_none') }}</p>{% endif %}
+      {% if posture and posture.risky_upns %}
+      <p class="muted" style="margin:10px 0 6px">{{ tr('tmpl.ca.risky_note') }}</p>
+      <ul class="ag-list cols">{% for u in posture.risky_upns %}<li class="critv">{{ u }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.ca.findings_h3') }}</h3>
+      {% if posture and posture.findings %}
+      <ul class="ag-top">
+        {% for f in posture.findings %}
+        <li><span class="badge {{ f.severity }}">{{ f.severity }}</span> {{ f.text }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}<span class="muted">{{ tr('tmpl.ca.findings_none') }}</span>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">{{ tr('tmpl.ca.not_collected') }}</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.ca.policies_h2') }} <span class="muted">{{ tr('tmpl.ca.policies_note') }}</span></h2>
+  {% if ca_view.policies %}
+  <div class="ag-filterbar"><input class="ca-search filter-search" type="search" placeholder="{{ tr('tmpl.filter.search_placeholder') }}" aria-label="{{ tr('tmpl.filter.search_aria') }}"></div>
+  {% for p in ca_view.policies %}
+  {% set sev = 'low' if p.state == 'enabled' else ('medium' if p.state == 'reportonly' else 'info') %}
+  <details class="acct ca-pol sev-{{ sev }}" data-facet="{{ p.facet }}">
+    <summary>
+      {% if p.state == 'enabled' %}<span class="badge low">{{ tr('tmpl.ca.state_enabled') }}</span>
+      {% elif p.state == 'reportonly' %}<span class="badge medium">{{ tr('tmpl.ca.state_report') }}</span>
+      {% else %}<span class="badge info">{{ tr('tmpl.ca.state_disabled') }}</span>{% endif %}
+      <span class="acct-upn">{{ p.name }}</span>
+      {% if p.requires_mfa %}<span class="acct-tag" style="border-color:var(--good);color:var(--good)">MFA</span>{% endif %}
+      {% if p.blocks_legacy %}<span class="acct-tag" style="border-color:var(--good);color:var(--good)">block legacy</span>{% endif %}
+      {% if p.narrow_enforced %}<span class="acct-tag" style="border-color:var(--high);color:var(--high)">{{ tr('tmpl.ca.tag_narrow') }}</span>{% endif %}
+      {% if 'excluded' in p.facet %}<span class="acct-tag" style="border-color:var(--high);color:var(--high)">{{ tr('tmpl.ca.has_excl') }}</span>{% endif %}
+      <span class="acct-sig muted">{{ p.grant_controls | join(', ') if p.grant_controls else tr('tmpl.ca.no_grant') }}</span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">{{ tr('tmpl.ca.col_state') }}</span><span class="v">{{ tr('tmpl.ca.state_' + ('enabled' if p.state=='enabled' else ('report' if p.state=='reportonly' else 'disabled'))) }}</span></div>
+        <div><span class="k">{{ tr('tmpl.ca.col_mfa') }}</span><span class="v">{{ tr('tmpl.val.yes') if p.requires_mfa else tr('tmpl.val.no_plain') }}</span></div>
+        <div><span class="k">{{ tr('tmpl.ca.col_legacy') }}</span><span class="v">{{ tr('tmpl.val.yes') if p.blocks_legacy else tr('tmpl.val.no_plain') }}</span></div>
+        <div><span class="k">{{ tr('tmpl.ca.col_apps') }}</span><span class="v">{{ p.apps_label }}</span></div>
+        <div><span class="k">{{ tr('tmpl.ca.f_clients') }}</span><span class="v">{{ p.client_app_types | join(', ') if p.client_app_types else '—' }}</span></div>
+        <div><span class="k">{{ tr('tmpl.ca.f_grant') }}</span><span class="v">{{ p.grant_controls | join(', ') if p.grant_controls else '—' }}</span></div>
+        {% if p.modified %}<div><span class="k">{{ tr('tmpl.ca.modified') }}</span><span class="v">{{ p.modified.strftime('%Y-%m-%d') }}</span></div>{% endif %}
+      </div>
+
+      <div class="acct-roles">
+        <strong>{{ tr('tmpl.ca.applies_to') }}</strong>
+        {% for u in p.include_users %}<span class="role">{{ u }}</span>{% endfor %}
+        {% for g in p.include_groups %}<span class="role">grp: {{ g }}</span>{% endfor %}
+        {% if p.include_roles %}<span class="role">{{ tr('tmpl.ca.roles_n', n=p.include_roles) }}</span>{% endif %}
+        {% if not p.include_users and not p.include_groups and not p.include_roles %}<span class="muted">—</span>{% endif %}
+      </div>
+
+      {% if p.exclude_users or p.exclude_groups or p.exclude_roles %}
+      <div class="acct-roles">
+        <strong class="warnv">{{ tr('tmpl.ca.excludes') }}</strong>
+        {% for u in p.exclude_users %}<span class="role priv">{{ u }}</span>{% endfor %}
+        {% for g in p.exclude_groups %}<span class="role priv">grp: {{ g }}</span>{% endfor %}
+        {% if p.exclude_roles %}<span class="role priv">{{ tr('tmpl.ca.roles_n', n=p.exclude_roles) }}</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+  {% else %}
+  <p class="muted">{{ tr('tmpl.ca.none') }}</p>
+  {% endif %}
+</section>
+
+<script>
+// Filtr CA: kafelki (data-cafilter) + szukajka zawężają listę rozwijanych polityk (.ca-pol).
+(function () {
+  var mod = document.querySelector('.ag-module[data-module="ca"]');
+  if (!mod) return;
+  var cards = Array.prototype.slice.call(mod.querySelectorAll('details.ca-pol'));
+  var tiles = Array.prototype.slice.call(mod.querySelectorAll('[data-cafilter]'));
+  var search = mod.querySelector('.ca-search');
+  var facet = null;
+  function apply() {
+    var q = (search && search.value || '').trim().toLowerCase();
+    cards.forEach(function (c) {
+      var f = (c.getAttribute('data-facet') || '').split(/\s+/);
+      var okF = !facet || f.indexOf(facet) !== -1;
+      var okT = !q || c.textContent.toLowerCase().indexOf(q) !== -1;
+      c.classList.toggle('hidden', !(okF && okT));
+    });
+  }
+  tiles.forEach(function (tl) {
+    tl.addEventListener('click', function () {
+      var v = tl.getAttribute('data-cafilter');
+      facet = (v === 'all' || facet === v) ? null : v;
+      tiles.forEach(function (x) { x.classList.toggle('tile-active', x.getAttribute('data-cafilter') === facet); });
+      apply();
+      if (mod.scrollIntoView) mod.scrollIntoView({ block: 'start' });
+    });
+  });
+  if (search) search.addEventListener('input', apply);
+  apply();
+})();
+</script>
+
+</div>

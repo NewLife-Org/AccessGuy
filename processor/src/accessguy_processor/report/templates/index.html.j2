@@ -1,0 +1,129 @@
+{% from '_sevbar.html.j2' import sevbar %}<!doctype html>
+{# RAPORT POŁĄCZONY: jeden interaktywny plik. Układ:
+     1) NAGŁÓWEK + OCENA POSTAWY TENANTA (jedyne nad zakładkami),
+     2) ZAKŁADKI (jak arkusze Excela): Konta / Grupy / Aplikacje / Conditional Access,
+     3) widok SUMMARY na samym DOLE.
+   Ciała współdzielone z partialami _*_body.html.j2. #}
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ tr('tmpl.report.html_title') }}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+{# 1) NAGŁÓWEK + OCENA POSTAWY TENANTA obok siebie (logo po lewej, ocena po prawej) — żeby
+   na górze nie stały dwa identyczne bloki "ocena + lista" jeden pod drugim. #}
+<header class="ag-header ag-header-split">
+  <div class="ag-hsplit-l">
+    <pre class="ag-logo" aria-label="AccessGuy logo">{{ access_guy_logo }}
+{{ access_guy_text }}</pre>
+    <div class="ag-brand">AccessGuy</div>
+    <div class="ag-sub">{{ tr('tmpl.brand.sub') }} · <strong>{{ tr('tmpl.sum.brand_strong') }}</strong></div>
+    <div class="ag-meta">
+      {{ tr('tmpl.meta.tenant') }}: <strong>{{ dataset.tenant.display_name }}</strong> ·
+      {{ tr('tmpl.meta.mode') }}: <strong>{{ dataset.scan_context.auth_mode }}</strong> ·
+      {{ tr('tmpl.meta.scan') }}: <strong>{{ dataset.generated_at.isoformat() }}</strong> ·
+      {{ tr('tmpl.meta.scope') }}: <strong>{{ dataset.scan_context.collectors_run | join(', ') }}</strong>
+    </div>
+  </div>
+  <div class="ag-hsplit-r">
+    {% include '_summary_grade.html.j2' %}
+  </div>
+</header>
+
+{# 2) ZAKŁADKI (na górze, wraz z tym co wyświetlają). #}
+<nav class="ag-tabs" role="tablist" aria-label="{{ tr('tmpl.report.tabs_aria') }}">
+  <button class="ag-tab" type="button" role="tab" data-tab="users" id="tab-users">{{ tr('community.module.users') }} <span class="ag-tab-n">{{ community.account_total }}</span></button>
+  <button class="ag-tab" type="button" role="tab" data-tab="groups" id="tab-groups">{{ tr('community.module.groups') }} <span class="ag-tab-n">{{ groups_view.group_total }}</span></button>
+  <button class="ag-tab" type="button" role="tab" data-tab="apps" id="tab-apps">{{ tr('community.module.apps') }} <span class="ag-tab-n">{{ apps_view.app_total }}</span></button>
+  <button class="ag-tab" type="button" role="tab" data-tab="ca" id="tab-ca">{{ tr('tmpl.ca.tab') }} <span class="ag-tab-n">{{ dataset.ca_policies | length }}</span></button>
+</nav>
+
+<div class="ag-tabpanel" data-tabpanel="users" role="tabpanel">
+  {% include '_users_body.html.j2' %}
+</div>
+<div class="ag-tabpanel" data-tabpanel="groups" role="tabpanel">
+  {% set view = groups_view %}
+  {% include '_groups_body.html.j2' %}
+</div>
+<div class="ag-tabpanel" data-tabpanel="apps" role="tabpanel">
+  {% set view = apps_view %}
+  {% include '_apps_body.html.j2' %}
+</div>
+<div class="ag-tabpanel" data-tabpanel="ca" role="tabpanel">
+  {% include '_ca_body.html.j2' %}
+</div>
+
+{# 3) WIDOK SUMMARY — na samym dole. #}
+<div class="ag-summaryzone">
+  <h2 class="ag-summaryzone-h">{{ tr('tmpl.report.summary_zone') }}</h2>
+  {% include '_summary_rest.html.j2' %}
+</div>
+
+<footer class="ag-footer">
+  AccessGuy · {{ tr('tmpl.footer.role.summary') }} · {{ tr('tmpl.footer.author_rendered', at=rendered_at) }}
+  <br><span class="muted">{{ tr('tmpl.footer.disclaimer') }}</span>
+  <div class="ag-links"><a href="{{ linkedin }}">LinkedIn</a> · <a href="{{ github }}">GitHub</a> · <a href="{{ youtube }}">YouTube</a></div>
+  <pre class="ag-tattoo" aria-label="Daniel NewLife Budyn">{{ tattoo_logo }}</pre>
+</footer>
+
+<script>
+// Przełączanie zakładek (Konta/Grupy/Aplikacje/Conditional Access) + głębokie linki z widoku
+// summary (na dole), które dodatkowo aktywują właściwą zakładkę (karta bywa w ukrytym panelu).
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.ag-tab'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.ag-tabpanel'));
+  function activate(name) {
+    tabs.forEach(function (t) {
+      var on = t.dataset.tab === name;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    panels.forEach(function (p) { p.classList.toggle('active', p.dataset.tabpanel === name); });
+  }
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () { activate(t.dataset.tab); });
+  });
+
+  function focusCard(id) {
+    var el = document.getElementById(id);
+    if (!el || !el.classList.contains('acct')) return;
+    el.classList.remove('hidden');
+    el.open = true;
+    el.classList.remove('targeted');
+    void el.offsetWidth;
+    el.classList.add('targeted');
+    el.scrollIntoView({ block: 'center' });
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-tab]');
+    if (!a || a.classList.contains('ag-tab')) return;  // same zakładki obsłużone wyżej
+    var name = a.dataset.tab;
+    activate(name);
+    var href = a.getAttribute('href') || '';
+    if (href.indexOf('#obj-') === 0) {
+      e.preventDefault();
+      var id = href.slice(1);
+      requestAnimationFrame(function () { focusCard(id); });
+    } else if (href.indexOf('#tab-') === 0) {
+      e.preventDefault();
+      document.querySelector('.ag-tabs').scrollIntoView({ block: 'start' });
+    }
+  });
+
+  function fromHash() {
+    if (location.hash.indexOf('#obj-') === 0) {
+      var el = document.getElementById(location.hash.slice(1));
+      var panel = el && el.closest('.ag-tabpanel');
+      if (panel) { activate(panel.dataset.tabpanel); requestAnimationFrame(function () { focusCard(location.hash.slice(1)); }); return; }
+    }
+    if (location.hash.indexOf('#tab-') === 0) { activate(location.hash.slice(5)); return; }
+    activate('users');
+  }
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+})();
+</script>
+</body>
+</html>

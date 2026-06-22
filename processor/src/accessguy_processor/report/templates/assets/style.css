@@ -45,6 +45,13 @@ body{
 .ag-sub strong{color:var(--azure-soft)}
 .ag-meta{position:relative;z-index:1;margin-top:12px;color:var(--muted);font-size:13px}
 .ag-meta strong{color:var(--text)}
+/* nagłówek dwukolumnowy: logo/meta po lewej, ocena postawy po prawej (obok siebie) */
+.ag-header-split{display:flex;gap:30px;align-items:center;flex-wrap:wrap}
+.ag-hsplit-l{flex:1 1 380px;min-width:0}
+.ag-hsplit-r{flex:1 1 420px;min-width:0}
+.ag-hsplit-r .ag-exec{padding:0;border:0;background:none}
+.ag-hsplit-r .ag-grade{flex:0 0 120px}
+.ag-hsplit-r .ag-grade-letter{font-size:50px}
 
 /* ---------- sekcje / nagłówki ---------- */
 section{padding:0 36px 26px}
@@ -67,6 +74,17 @@ h3{color:var(--azure-soft);font-size:13px;text-transform:uppercase;letter-spacin
 .ag-card.crit .ag-num{color:var(--critical)}
 .ag-card.high{border-color:var(--high)} .ag-card.high .ag-num{color:var(--high)}
 .ag-card.med{border-color:var(--medium)} .ag-card.med .ag-num{color:var(--medium)}
+/* interaktywne kafelki (klik = filtr rozpiski poniżej) */
+button.ag-card{font-family:inherit;text-align:left;color:inherit}
+.ag-card-btn{cursor:pointer}
+.ag-card-btn::after{content:"⟂";position:absolute;top:8px;right:11px;font-size:11px;color:var(--muted2);opacity:.45;transform:rotate(45deg)}
+.ag-card-btn:hover{border-color:var(--azure);transform:translateY(-2px)}
+.ag-card-btn:hover::after{opacity:.9;color:var(--azure-bright)}
+.ag-card-btn.tile-active{border-color:var(--azure);box-shadow:0 0 0 2px rgba(47,155,255,.55),0 8px 22px rgba(0,0,0,.3)}
+.ag-card-btn.tile-active::after{content:"✕";transform:none;opacity:.95;color:var(--azure-bright)}
+
+/* pasek rozkładu severity tuż pod podsumowaniem, nad kafelkami */
+.ag-distrib{padding-top:6px;padding-bottom:4px}
 
 .ag-warn{margin:0 36px 16px;padding:12px 16px;border:1px solid var(--high);border-radius:12px;
   background:rgba(255,148,66,.08);color:var(--high)}
@@ -142,7 +160,10 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
   border:1px solid var(--line2);background:var(--bg);color:var(--text);font-size:13px;outline:none}
 .ag-filterbar .filter-search:focus{border-color:var(--azure);box-shadow:0 0 0 2px rgba(47,155,255,.25)}
 .filter-chip{cursor:pointer;user-select:none;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:700;
-  text-transform:uppercase;letter-spacing:.4px;border:1px solid var(--line2);color:var(--muted);background:transparent}
+  text-transform:uppercase;letter-spacing:.4px;border:1px solid var(--line2);color:var(--muted);background:transparent;
+  font-family:inherit;line-height:1.4;appearance:none;-webkit-appearance:none}
+.filter-chip:focus-visible,.filter-btn:focus-visible,.ag-tab:focus-visible,.ag-card-btn:focus-visible{
+  outline:2px solid var(--azure-bright);outline-offset:2px}
 .filter-chip.active{color:var(--text);border-color:var(--azure);background:rgba(47,155,255,.16)}
 .filter-chip[data-sev="critical"].active{border-color:var(--critical);background:rgba(255,84,112,.18)}
 .filter-chip[data-sev="high"].active{border-color:var(--high);background:rgba(255,148,66,.18)}
@@ -268,6 +289,28 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .people.nested{margin:6px 0 6px 14px;padding-left:10px;border-left:2px solid var(--line2)}
 .people.nested>summary::before{content:"📁 ";}
 
+/* ---------- zakładki (Konta / Grupy / Aplikacje — jak arkusze Excela) ---------- */
+.ag-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:14px 36px 0;margin-top:10px;
+  border-bottom:1px solid var(--line)}
+.ag-tab{cursor:pointer;font-family:inherit;position:relative;top:1px;
+  padding:11px 24px;border:1px solid var(--line);border-bottom:none;border-radius:11px 11px 0 0;
+  background:linear-gradient(180deg,rgba(14,38,64,.5),rgba(8,20,36,.35));
+  color:var(--muted);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.7px;
+  transition:color .15s ease,border-color .15s ease,background .15s ease}
+.ag-tab:hover{color:var(--azure-bright)}
+.ag-tab.active{color:var(--text);border-color:var(--azure);
+  background:linear-gradient(180deg,rgba(47,155,255,.20),rgba(8,20,36,.55));
+  box-shadow:0 -3px 14px rgba(47,155,255,.22)}
+.ag-tab .ag-tab-n{margin-left:7px;font-variant-numeric:tabular-nums;color:var(--azure-soft);font-weight:800}
+.ag-tabpanel{display:none}
+.ag-tabpanel.active{display:block}
+
+/* strefa widoku SUMMARY na samym dole raportu połączonego */
+.ag-summaryzone{border-top:2px solid var(--azure-deep);margin-top:18px;
+  background:radial-gradient(900px 360px at 50% -10%, rgba(47,155,255,.08), transparent 70%)}
+.ag-summaryzone-h{margin:0;padding:18px 36px 0;color:var(--azure-bright);font-size:16px;
+  text-transform:uppercase;letter-spacing:1.2px}
+
 .ag-footer{padding:26px 36px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 
 /* ---------- druk: pełny jasny motyw ----------
@@ -300,6 +343,9 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
   .badge.medium{color:#241d00}
   .ag-filterbar{display:none}
   .ag-btn{display:none}
+  /* W druku/PDF pokazujemy wszystkie zakładki (papier nie ma klikania). */
+  .ag-tabs{display:none}
+  .ag-tabpanel{display:block!important}
   .ag-link{border-bottom:none}
   section{break-inside:auto}
   .ag-card,.ag-box,.flag,.ag-plan-step{break-inside:avoid}

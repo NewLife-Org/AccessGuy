@@ -1,0 +1,5 @@
+{# Pełne ciało raportu ZBIORCZEGO dla standalone summary.html.j2: ocena A–F + reszta.
+   W raporcie połączonym (index.html.j2) te dwie części są rozdzielone (ocena na górze,
+   reszta na dole), więc dołączamy je tam osobno. #}
+{% include '_summary_grade.html.j2' %}
+{% include '_summary_rest.html.j2' %}

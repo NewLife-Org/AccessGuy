@@ -700,6 +700,7 @@ function Build-AgDataset {
         if (-not $polId) { continue }
         $cond   = Get-AgProp $pol 'conditions'
         $usersC = Get-AgProp $cond 'users'
+        $appsC  = Get-AgProp $cond 'applications'
         $grant  = Get-AgProp $pol 'grantControls'
         $controls = @(@(Get-AgProp $grant 'builtInControls') | ForEach-Object { [string]$_ } | Where-Object { $_ })
         $clientApps = @(@(Get-AgProp $cond 'clientAppTypes') | ForEach-Object { [string]$_ } | Where-Object { $_ })
@@ -720,6 +721,8 @@ function Build-AgDataset {
             excludeGroups    = @(& $toList (Get-AgProp $usersC 'excludeGroups'))
             includeRoles     = @(& $toList (Get-AgProp $usersC 'includeRoles'))
             excludeRoles     = @(& $toList (Get-AgProp $usersC 'excludeRoles'))
+            includeApplications = @(& $toList (Get-AgProp $appsC 'includeApplications'))
+            excludeApplications = @(& $toList (Get-AgProp $appsC 'excludeApplications'))
             grantControls    = @($controls)
             modifiedDateTime = ConvertTo-AgIso (Get-AgProp $pol 'modifiedDateTime')
         })
@@ -768,7 +771,7 @@ function Build-AgDataset {
     }
 
     [ordered]@{
-        schemaVersion = '1.3'
+        schemaVersion = '1.4'
         generatedAt   = $generatedAt.ToString('o')
         tenant        = [ordered]@{
             id              = $tenantId

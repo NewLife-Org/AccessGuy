@@ -16,9 +16,10 @@ venv/
 build/
 dist/
 
-# Dane wrażliwe — NIGDY do repo
+# Dane wrażliwe — NIGDY do repo (skany tenanta). Pliki kontraktu w contracts/ to NIE dane.
 dataset*.json
 !contracts/samples/dataset.sample.json
+!contracts/dataset.schema.json
 *.pdf
 *.csv
 

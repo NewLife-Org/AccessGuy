@@ -15,7 +15,7 @@ def app_high_risk_perm(app: Application, ctx: ScoringContext) -> str | None:
     risky = [p for p in app.app_permissions if p.is_high_risk]
     if risky:
         names = ", ".join(sorted({p.permission for p in risky}))
-        return f"Uprawnienia aplikacyjne wysokiego ryzyka (app-only): {names}."
+        return ctx.t("evidence.APP_HIGH_RISK_PERM", perms=names)
     return None
 
 
@@ -29,7 +29,7 @@ def app_broad_read(app: Application, ctx: ScoringContext) -> str | None:
         }
     )
     if hits:
-        return f"Masowy odczyt całego tenanta (app-only): {', '.join(hits)}."
+        return ctx.t("evidence.APP_BROAD_READ", perms=", ".join(hits))
     return None
 
 
@@ -44,7 +44,7 @@ def app_secret_expired(app: Application, ctx: ScoringContext) -> str | None:
     expired = [c for c in app.credentials if c.expired]
     if expired:
         kinds = ", ".join(sorted({c.kind for c in expired}))
-        return f"{len(expired)} wygasłe poświadczenie(a) ({kinds}) na włączonej aplikacji."
+        return ctx.t("evidence.APP_SECRET_EXPIRED", count=len(expired), kinds=kinds)
     return None
 
 
@@ -57,7 +57,7 @@ def app_secret_expiring(app: Application, ctx: ScoringContext) -> str | None:
     ]
     if soon:
         nearest = min(c.days_to_expiry for c in soon if c.days_to_expiry is not None)
-        return f"Poświadczenie wygasa za {nearest} dni (próg {warn}) — zaplanuj rotację."
+        return ctx.t("evidence.APP_SECRET_EXPIRING", days=nearest, warn=warn)
     return None
 
 
@@ -70,55 +70,66 @@ def app_long_lived_secret(app: Application, ctx: ScoringContext) -> str | None:
     ]
     if long:
         longest = max(c.lifetime_days for c in long if c.lifetime_days is not None)
-        return f"Poświadczenie ważne {longest} dni (>{limit}) — długie okno na wyciek."
+        return ctx.t("evidence.APP_LONG_LIVED_SECRET", days=longest, limit=limit)
     return None
 
 
 def app_secret_over_cert(app: Application, ctx: ScoringContext) -> str | None:
-    # Antywzorzec tylko gdy używa sekretu i NIE ma certyfikatu jako alternatywy.
+    # Mniej szumu: „sekret zamiast certu" flagujemy tylko dla aplikacji UPRZYWILEJOWANYCH
+    # (uprawnienia app-only high-risk) — tam wyciek sekretu daje pełnię dostępu do tenanta.
+    if not app.high_risk_app_permissions:
+        return None
     has_secret = any(c.kind == "secret" and not c.expired for c in app.credentials)
     has_cert = any(c.kind == "certificate" and not c.expired for c in app.credentials)
     if has_secret and not has_cert:
-        return "Aplikacja uwierzytelnia się sekretem klienta, bez certyfikatu (preferuj certyfikat)."
+        return ctx.t("evidence.APP_SECRET_OVER_CERT")
     return None
 
 
 def app_no_owner(app: Application, ctx: ScoringContext) -> str | None:
-    if not app.owners:
-        return "Aplikacja bez właściciela — brak atestacji i odpowiedzialności biznesowej."
-    return None
+    if app.owners:
+        return None
+    # Gdy aplikacja jest PORZUCONA (brak właściciela + brak przypisanych użytkowników + żywe
+    # poświadczenie), cięższa reguła APP_ORPHANED ją przejmuje — nie podwajamy punktów za sam
+    # „brak ownera".
+    if not app.assigned_users and app.credentials:
+        return None
+    return ctx.t("evidence.APP_NO_OWNER")
 
 
 def app_multi_tenant(app: Application, ctx: ScoringContext) -> str | None:
     if app.is_multi_tenant:
-        return f"signInAudience = {app.sign_in_audience} (logowanie spoza tenanta)."
+        return ctx.t("evidence.APP_MULTI_TENANT", audience=app.sign_in_audience)
     return None
 
 
 def app_unverified_privileged(app: Application, ctx: ScoringContext) -> str | None:
     if not app.verified_publisher and app.high_risk_permissions:
-        return "Aplikacja z wysokim uprawnieniem nie ma zweryfikowanego wydawcy (MPN)."
+        return ctx.t("evidence.APP_UNVERIFIED_PRIVILEGED")
     return None
 
 
 def app_credential_sprawl(app: Application, ctx: ScoringContext) -> str | None:
-    if len(app.credentials) >= ctx.th("credentialSprawl"):
-        secrets = sum(1 for c in app.credentials if c.kind == "secret")
-        certs = len(app.credentials) - secrets
-        return f"{len(app.credentials)} poświadczeń ({secrets} sekret(y), {certs} cert(y)) — rozrost, trudniejsza rotacja i kontrola."
+    # Liczymy tylko AKTYWNE poświadczenia — wygasłe to martwy ślad (łapie je APP_SECRET_EXPIRED),
+    # rozrost dotyczy tych do rotacji TERAZ. Mniej szumu, ostrzejszy sygnał.
+    active = [c for c in app.credentials if not c.expired]
+    if len(active) >= ctx.th("credentialSprawl"):
+        secrets = sum(1 for c in active if c.kind == "secret")
+        certs = len(active) - secrets
+        return ctx.t("evidence.APP_CREDENTIAL_SPRAWL", count=len(active), secrets=secrets, certs=certs)
     return None
 
 
 def app_wide_consent(app: Application, ctx: ScoringContext) -> str | None:
     consent = [u for u in app.assigned_users if u.via == "consent"]
     if len(consent) >= ctx.th("wideConsentUsers"):
-        return f"{len(consent)} użytkowników z indywidualną zgodą — szeroka ekspozycja (wektor 'illicit consent')."
+        return ctx.t("evidence.APP_WIDE_CONSENT", count=len(consent))
     return None
 
 
 def app_orphaned(app: Application, ctx: ScoringContext) -> str | None:
     if not app.owners and not app.assigned_users and app.credentials:
-        return "Brak właściciela i przypisanych użytkowników, ale aplikacja ma poświadczenie — prawdopodobnie porzucona."
+        return ctx.t("evidence.APP_ORPHANED")
     return None
 
 
@@ -129,24 +140,17 @@ def app_dormant_privileged(app: Application, ctx: ScoringContext) -> str | None:
 
     'lastSignInDateTime is None' znaczy 'nigdy' tylko wtedy, gdy kolektor spSignIns
     faktycznie biegł — inaczej to brak danych i milczymy (zero zgadywania)."""
-    if not app.high_risk_permissions:
+    if not app.high_risk_app_permissions:
         return None
     dormant_days = ctx.th("appDormantDays")
-    perms = ", ".join(sorted({p.permission for p in app.high_risk_permissions}))
+    perms = ", ".join(sorted({p.permission for p in app.high_risk_app_permissions}))
     if app.last_sign_in_date_time is not None:
         d = ctx.days_since(app.last_sign_in_date_time)
         if d is not None and d >= dormant_days:
-            return (
-                f"Ostatnie logowanie service principala {d} dni temu (próg {dormant_days}), "
-                f"a aplikacja trzyma uprawnienia app-only: {perms}. Nieużywane uprawnienia "
-                "wysokiego ryzyka — odbierz lub wyłącz aplikację."
-            )
+            return ctx.t("evidence.APP_DORMANT_PRIVILEGED.inactive", days=d, dormant=dormant_days, perms=perms)
         return None
     if ctx.index is not None and "spSignIns" in ctx.index.collectors_run:
-        return (
-            f"Brak JAKIEGOKOLWIEK logowania service principala w danych aktywności, "
-            f"a aplikacja trzyma uprawnienia app-only: {perms}. Martwy ładunek do odebrania."
-        )
+        return ctx.t("evidence.APP_DORMANT_PRIVILEGED.never", perms=perms)
     return None
 
 
@@ -164,16 +168,16 @@ def app_credential_added(app: Application, ctx: ScoringContext) -> str | None:
         return None
     recent.sort(key=lambda e: e.activity_date_time, reverse=True)
     items = "; ".join(
-        f"{e.activity_date_time.date().isoformat()}: '{e.activity}' przez "
-        f"{e.actor or 'nieznanego aktora'}"
+        ctx.t(
+            "evidence.APP_CREDENTIAL_ADDED.item",
+            date=e.activity_date_time.date().isoformat(),
+            activity=e.activity,
+            actor=e.actor or ctx.t("evidence.APP_CREDENTIAL_ADDED.actor_unknown"),
+        )
         for e in recent[:3]
     )
-    risk_note = (
-        " Aplikacja ma uprawnienia app-only wysokiego ryzyka — potwierdź autoryzację zmiany."
-        if app.high_risk_permissions
-        else ""
-    )
-    return f"Zmiany poświadczeń w ostatnich {window} dniach: {items}.{risk_note}"
+    risk_note = ctx.t("evidence.APP_CREDENTIAL_ADDED.risk_note") if app.high_risk_permissions else ""
+    return ctx.t("evidence.APP_CREDENTIAL_ADDED", window=window, items=items, risk=risk_note)
 
 
 def app_priv_owner_weak(app: Application, ctx: ScoringContext) -> str | None:
@@ -181,30 +185,28 @@ def app_priv_owner_weak(app: Application, ctx: ScoringContext) -> str | None:
     wysokiego ryzyka może w każdej chwili DODAĆ WŁASNE poświadczenie i działać jako
     aplikacja (klasyczna eskalacja). Jeśli owner jest słabo chroniony — to gotowa ścieżka:
     przejęcie ownera → nowy sekret → pełnia uprawnień aplikacji bez żadnego MFA."""
-    if ctx.index is None or not app.high_risk_permissions:
+    if ctx.index is None or not app.high_risk_app_permissions:
         return None
     hits: list[str] = []
     for owner in app.owners:
         acc = ctx.index.resolve_owner(owner)
         if acc is None:
             continue
-        reasons = account_weaknesses(acc)
+        reasons = account_weaknesses(acc, ctx.t)
         if reasons:
-            hits.append(f"{acc.user_principal_name} ({', '.join(reasons)})")
+            hits.append(ctx.t("evidence.APP_PRIV_OWNER_WEAK.hit", upn=acc.user_principal_name, reasons=", ".join(reasons)))
     if not hits:
         return None
-    perms = ", ".join(sorted({p.permission for p in app.high_risk_permissions}))
-    evidence = (
-        f"Słabo chronieni właściciele: {'; '.join(hits)} — owner może dodać własny sekret "
-        f"i przejąć uprawnienia app-only ({perms})."
-    )
+    perms = ", ".join(sorted({p.permission for p in app.high_risk_app_permissions}))
+    evidence = ctx.t("evidence.APP_PRIV_OWNER_WEAK.base", hits="; ".join(hits), perms=perms)
     # Audit ApplicationManagement (1.3): jeśli na poświadczeniach FAKTYCZNIE coś się działo,
     # hipoteza "może dodać sekret" zamienia się w konkretny ślad do zweryfikowania.
     if app.credential_events:
         last = max(app.credential_events, key=lambda e: e.activity_date_time)
-        evidence += (
-            f" UWAGA: audit notuje zmianę poświadczeń {last.activity_date_time.date().isoformat()} "
-            f"przez {last.actor or 'nieznanego aktora'} — potwierdź, że była autoryzowana."
+        evidence += ctx.t(
+            "evidence.APP_PRIV_OWNER_WEAK.audit",
+            date=last.activity_date_time.date().isoformat(),
+            actor=last.actor or ctx.t("evidence.APP_CREDENTIAL_ADDED.actor_unknown"),
         )
     return evidence
 
@@ -226,15 +228,15 @@ def app_guest_reach(app: Application, ctx: ScoringContext) -> str | None:
         elif u.type == "group":
             g = ctx.index.groups_by_id.get(u.id)
             if g is not None and (g.guest_count or 0) > 0:
-                via_groups.append(f"{g.display_name} ({g.guest_count} gości)")
+                via_groups.append(ctx.t("evidence.APP_GUEST_REACH.group_part", group=g.display_name, count=g.guest_count))
     if not direct and not via_groups:
         return None
     parts: list[str] = []
     if direct:
-        parts.append("bezpośrednio: " + ", ".join(direct[:5]))
+        parts.append(ctx.t("evidence.APP_GUEST_REACH.direct", users=", ".join(direct[:5])))
     if via_groups:
-        parts.append("przez grupy: " + ", ".join(via_groups[:5]))
-    return f"Konta-goście mają dostęp do aplikacji — {'; '.join(parts)}."
+        parts.append(ctx.t("evidence.APP_GUEST_REACH.via_groups", groups=", ".join(via_groups[:5])))
+    return ctx.t("evidence.APP_GUEST_REACH", parts="; ".join(parts))
 
 
 APP_PREDICATES = {

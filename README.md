@@ -20,12 +20,14 @@
 
 # AccessGuy
 
-**Read-only audyt uprawnień Microsoft Entra ID — od jednego logowania do raportu dla zarządu.**
-Autor: **Daniel „NewLife" Budyn**
+🌐 **English** · [Polski](README.pl.md)
+
+**Read-only Microsoft Entra ID access review — from a single sign-in to a board-ready report.**
+Author: **Daniel „NewLife" Budyn**
 
 ---
 
-## ▶ Szybki start (uruchom to)
+## ▶ Quick start (just run it)
 
 ```bash
 # Linux / macOS:
@@ -36,144 +38,155 @@ sudo pwsh ./NewLife-AccessGuy.ps1
 pwsh .\NewLife-AccessGuy.ps1
 ```
 
-Jeden launcher prowadzi Cię za rękę:
-1. wybierasz **[1] Skan** → logujesz się do tenanta (na Linux: **[2] kod / device code**) → skaner zbiera dane,
-2. wybierasz **[2] Raport** → wskazujesz plik skanu → dostajesz gotowy raport HTML.
+One launcher walks you through it:
+1. pick **[1] Scan** → sign in to the tenant (on Linux: **[2] device code**) → the scanner collects the data,
+2. pick **[2] Report** → point it at the scan file → get a ready HTML report.
 
-To wszystko. Reszta tego dokumentu to szczegóły.
+> **Language.** Everything defaults to **English**. Switch it from the menu via **[L] Language / Język**
+> (PL available now, more languages on the way) or with a flag: `pwsh ./NewLife-AccessGuy.ps1 -Lang pl`.
+> Directly in the processor: `python -m accessguy_processor process dataset.json --lang pl`.
 
----
+> **Pre-scan check.** The menu item **[D] Dependencies** (check before scan) shows the package component status,
+> the Graph permissions used (with descriptions), whether Python and 7-Zip are present, and write access to the `out/` and `reports/` folders.
 
-## Po co to jest
-
-AccessGuy odpowiada na pytanie, które pada na każdym audycie i przeglądzie ISO 27001 / NIS2:
-
-> **„Kto ma dostęp do czego w naszym Entra ID i co z tym pilnie zrobić?"**
-
-Łączysz się **raz** (read-only, jako Global Reader / Global Admin), a narzędzie:
-- inwentaryzuje wszystkie konta (internal / external / guest), **grupy** i **aplikacje**, role i licencje,
-- punktuje ryzyko wg jasnej rubryki (nieaktywność, role uprzywilejowane bez MFA, legacy auth, ryzykowne logowania, stałe role poza PIM, nieużywane uprawnienia…),
-- **koreluje moduły między sobą** — łączy tożsamości, grupy i aplikacje z logami sign-in i pokazuje **imienne ścieżki eskalacji** (np. „konto bez MFA → członek grupy z rolą Global Admin → pełny dostęp”),
-- generuje **czytelny raport HTML** z oceną postawy **A–F**, streszczeniem dla zarządu i **planem działań „od czego zacząć”**.
-
-**Nic nie zmienia w tenancie.** Żadnych uprawnień zapisu, żadnych sekretów po stronie raportu.
+That's it. The rest of this document is the details.
 
 ---
 
-## Jak to działa — dwie fazy, jeden plik
+## What it's for
+
+AccessGuy answers the question that comes up in every audit and ISO 27001 / NIS2 review:
+
+> **"Who has access to what in our Entra ID, and what should we fix first?"**
+
+You connect **once** (read-only, as Global Reader / Global Admin) and the tool:
+- inventories all accounts (internal / external / guest), **groups** and **applications**, roles and licenses,
+- scores risk against a clear rubric (inactivity, privileged roles without MFA, legacy auth, risky sign-ins, standing roles outside PIM, unused permissions…),
+- **correlates the modules with each other** — links identities, groups and applications with sign-in logs and surfaces **named escalation paths** (e.g. "account without MFA → member of a group with the Global Admin role → full access"),
+- generates a **readable HTML report** with an **A–F** posture grade, an executive summary, and a **"where to start" action plan**.
+
+**It changes nothing in the tenant.** No write permissions, no secrets on the report side.
+
+---
+
+## How it works — two phases, one file
 
 ```
-[ TENANT ] --(SKANER: PowerShell)--> <tenant>_<data>.json --(BUILDER: Python)--> raport HTML/CSV
-            read-only, u klienta            plik = kontrakt           scoring + ładny raport, u Ciebie
+[ TENANT ] --(SCANNER: PowerShell)--> <tenant>_<date>.json --(BUILDER: Python)--> HTML/CSV report
+            read-only, at the client       file = contract        scoring + nice report, on your box
 ```
 
-| Faza | Co robi | Gdzie |
+| Phase | What it does | Where |
 |---|---|---|
-| **[1] AccessGuy-EntraID-Scanner** | łączy się z Entra ID (tylko odczyt), zbiera dane → `out/<tenant8>_<data>.json` | u klienta / w tenancie |
-| **[2] AccessGuy-Report-Builder** | czyta plik skanu, liczy scoring, generuje raport HTML/CSV | u Ciebie (Python 3) |
+| **[1] AccessGuy-EntraID-Scanner** | connects to Entra ID (read-only), collects data → `out/<tenant8>_<date>.json` | at the client / in the tenant |
+| **[2] AccessGuy-Report-Builder** | reads the scan file, computes scoring, generates the HTML/CSV report | on your box (Python 3) |
 
-Granicą jest **plik JSON** (kontrakt `contracts/dataset.schema.json`). Skanujesz u klienta, wynosisz JSON, raport robisz u siebie — builder **nigdy nie dotyka tenanta**. Jak u klienta nie ma Pythona, skaner zrobi *lekki* raport HTML sam (`out/*.lite.html`).
+The boundary is the **JSON file** (the `contracts/dataset.schema.json` contract). You scan at the client, take the JSON out, and build the report on your own machine — the builder **never touches the tenant**. If the client has no Python, the scanner produces a *lite* HTML report on its own (`out/*.lite.html`).
 
 ---
 
-## Użycie krok po kroku
+## Step-by-step usage
 
-### Tryb [1] — Skan
+### Mode [1] — Scan
 
 ```bash
-sudo pwsh ./NewLife-AccessGuy.ps1     # → wybierz [1]
+sudo pwsh ./NewLife-AccessGuy.ps1     # → pick [1]
 ```
-- Wybierz logowanie: **[1] przeglądarka** (Windows) albo **[2] kod / device code** (zalecane na Linux).
-- Przy device code zobaczysz: *„open https://microsoft.com/device and enter code XXXX"* — wpisz kod, potwierdź w **Authenticatorze**.
-- Po zalogowaniu: efektowny reveal logo, liczniki łapanych danych i podsumowanie „co złapaliśmy".
-- Wynik: `out/<tenant8>_<data>.json` (+ `.lite.html`).
+- Choose sign-in: **[1] browser** (Windows) or **[2] device code** (recommended on Linux).
+- With device code you'll see: *"open https://microsoft.com/device and enter code XXXX"* — enter the code, confirm in **Authenticator**.
+- After sign-in: a slick logo reveal, live counters of captured data, and a "what we captured" summary.
+- Output: `out/<tenant8>_<date>.json` (+ `.lite.html`).
+- At the end (interactively) you can **optionally** encrypt the dataset into a password-protected archive (7-Zip / AES-256). Note: an encrypted dataset cannot be read by the builder until you extract it.
 
-Bezpośrednio, bez launchera:
+Directly, without the launcher:
 ```bash
 pwsh ./scanner/Invoke-AccessGuyScan.ps1 -DeviceCode -LiteReport
 ```
 
-### Tryb [2] — Raport
+### Mode [2] — Report
 
 ```bash
-sudo pwsh ./NewLife-AccessGuy.ps1     # → wybierz [2]
+sudo pwsh ./NewLife-AccessGuy.ps1     # → pick [2]
 ```
-- Builder sam utworzy środowisko Python (venv), doinstaluje zależności, **wylistuje pliki skanu** z `out/` i pozwoli wybrać (oraz który raport zbudować: zbiorczy / konta / grupy / aplikacje).
-- Wynik: `reports/<NazwaTenanta>_<data>_{summary,users,groups,apps}.html` (+ `.csv`).
+- The builder creates a Python environment (venv) on its own, installs dependencies, and **lists the scan files** from `out/` to choose from.
+- Output: **one interactive HTML report** `reports/<TenantName>_<date>.html` — a posture grade on top of four tabs (Accounts / Groups / Applications / Conditional Access) — plus per-module `.csv` exports.
+- After building you can **optionally** pack the report + dataset into a single encrypted archive (7-Zip / AES-256); the password is shown **once** and stored nowhere.
 
-Bezpośrednio:
+Directly:
 ```bash
 cd processor && python3 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/python -m accessguy_processor build --dir ../out --out ../reports
 ```
 
-### Tryb cykliczny (app-only, bez człowieka)
+### Scheduled mode (app-only, no human)
 ```powershell
 ./scanner/Invoke-AccessGuyScan.ps1 -AuthMode App -UseManagedIdentity
 ```
 
 ---
 
-## Co znajdziesz w raporcie
+## What's in the report
 
-- **Ocena postawy A–F** + streszczenie dla zarządu (najgorsze konta na wierzchu).
-- **Ścieżki eskalacji** — imienne łańcuchy ataku z dowodem z logów (korelacja tożsamość × grupa × aplikacja).
-- **Plan działań „od czego zacząć”** — wszystkie ustalenia z trzech modułów zagregowane w priorytetyzowaną listę zadań, z głębokimi linkami do konkretnych kart.
-- **Charakterystyka tenanta:** liczba kont, Global Adminów, kont bez MFA, **pokrycie MFA %**, licencje M365, **10 ostatnio założonych kont**, **legacy auth wg protokołu**.
-- **Konta / grupy / aplikacje wg ryzyka** — rozwijana karta na obiekt (klikasz → pełne detale), z filtrowaniem i wyszukiwarką: ostatnie logowanie, zmiana hasła, MFA, licencje, **aktywność 30 dni** (logowania / nieudane / nocne 20–04 / ryzykowne / legacy / top-aplikacje), role, członkowie/właściciele, flagi z rekomendacjami.
-- Bogata rubryka scoringu (konta + grupy + aplikacje + **reguły korelacyjne**) m.in.: konto nieaktywne, gość/zewnętrzny z rolą uprzywilejowaną, **stałe role poza PIM**, **uprawnienia posiadane ale nieużywane**, **konto uprzywilejowane bez MFA**, **legacy auth (omija MFA)**, **ryzykowne logowania**, **ukryty admin przez grupę**, **sygnały ataku na koncie uprzywilejowanym**, **słaby właściciel aplikacji app-only**, zgody na aplikacje wysokiego ryzyka. Pełna lista i progi: [`contracts/rules.yaml`](contracts/rules.yaml).
+- **A–F posture grade** + an executive summary (the worst accounts on top).
+- **Escalation paths** — named attack chains with evidence from the logs (identity × group × application correlation).
+- **"Where to start" action plan** — every finding from the three modules aggregated into a prioritized task list, with deep links to specific cards.
+- **Tenant profile:** number of accounts, Global Admins, accounts without MFA, **MFA coverage %**, M365 licenses, **10 most recently created accounts**, **legacy auth by protocol**.
+- **Conditional Access & tenant posture** — every CA policy with its resolved scope (which users/apps it targets, who is excluded), whether MFA is enforced **broadly** (all users + all apps) or only through **narrowly scoped** policies, legacy-auth blocking, report-only policies, accounts excluded from MFA, and risky users from Identity Protection.
+- **Accounts / groups / applications by risk** — an expandable card per object (click → full details), with filtering and search: last sign-in, password change, MFA, licenses, **30-day activity** (sign-ins / failed / night 20:00–04:00 / risky / legacy / top apps), roles, members/owners, flags with recommendations.
+- A rich scoring rubric (accounts + groups + applications + **correlation rules**), including: inactive account, guest/external with a privileged role, **standing roles outside PIM**, **permissions held but unused**, **privileged account without MFA**, **legacy auth (bypasses MFA)**, **risky sign-ins**, **hidden admin via a group**, **attack signals on a privileged account**, **weak owner of an app-only application**, consent to high-risk applications. Full list and thresholds: [`contracts/rules.yaml`](contracts/rules.yaml).
 
 ---
 
-## Prerekwizyty
+## Prerequisites
 
-**Skan (faza 1):**
+**Scan (phase 1):**
 - PowerShell 7+ (`pwsh`)
-- moduł `Microsoft.Graph.Authentication`:
+- the `Microsoft.Graph.Authentication` module:
   ```powershell
   Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force
   ```
-- konto operatora z rolą **Global Reader** (lub Global Admin / Security Reader + Reports Reader)
-- tenant **Entra ID P1/P2** dla pełnych danych logowań (`signInActivity`, signIns)
+- an operator account with the **Global Reader** role (or Global Admin / Security Reader + Reports Reader)
+- an **Entra ID P1/P2** tenant for full sign-in data (`signInActivity`, signIns)
 
-**Raport (faza 2):**
-- Python 3.11+ (builder sam tworzy venv i dociąga zależności)
-- (opcjonalnie PDF) na Debian/Kali: `sudo apt install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev`
+**Report (phase 2):**
+- Python 3.11+ (the builder creates the venv and pulls dependencies on its own)
+- (optional PDF) on Debian/Kali: `sudo apt install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev`
 
----
-
-## Uprawnienia (zawsze read-only)
-
-`User.Read.All`, `Directory.Read.All`, `AuditLog.Read.All`, `RoleManagement.Read.All` (wymagane) + `Application.Read.All`, `UserAuthenticationMethod.Read.All` (zalecane). **Żadnych `*.ReadWrite.*`.** Szczegóły: [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md).
-
-> Logujesz się raz jako Global Admin/Reader — to wystarcza. Token przy logowaniu kodem żyje tylko w pamięci procesu (`-ContextScope Process`), nie ląduje w keyringu.
+**Output protection (optional):**
+- **7-Zip** (`7z` / `7za` / `7zz`, on Windows also the default `7-Zip` install) — only if you want to encrypt the dataset/reports. Without it everything still works; files stay in plaintext.
 
 ---
 
-## Struktura repo
+## Permissions (always read-only)
+
+`User.Read.All`, `Directory.Read.All`, `AuditLog.Read.All`, `RoleManagement.Read.All` (required) + `Application.Read.All`, `UserAuthenticationMethod.Read.All`, `Policy.Read.All`, `IdentityRiskyUser.Read.All` (recommended). **No `*.ReadWrite.*`.**
+
+> You sign in once as Global Admin/Reader — that's enough. With device-code sign-in the token lives only in process memory (`-ContextScope Process`); it never lands in the keyring.
+
+---
+
+## Repo structure
 
 ```
-NewLife-AccessGuy.ps1     ← główny launcher (start tutaj)
-scanner/                  ← faza SKAN (PowerShell): Invoke-AccessGuyScan.ps1 + lib/
-processor/                ← faza RAPORT (Python): src/accessguy_processor/ + testy
-contracts/                ← kontrakt: dataset.schema.json + rules.yaml + sample
-docs/                     ← ARCHITECTURE · PERMISSIONS · RUNBOOK
+NewLife-AccessGuy.ps1     ← main launcher (start here)
+scanner/                  ← SCAN phase (PowerShell): Invoke-AccessGuyScan.ps1 + lib/
+processor/                ← REPORT phase (Python): src/accessguy_processor/ + tests
+contracts/                ← contract: dataset.schema.json + rules.yaml + sample
 ```
-
-Więcej: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md) · [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ---
 
-## Kontakt
+## Contact
 
 **Daniel „NewLife" Budyn**
 - LinkedIn: https://www.linkedin.com/in/daniel-b-4295a421a/
 - GitHub: https://github.com/NewLife-Org/AccessGuy
+- YouTube: https://www.youtube.com/@NewLife-org-pl
 
 ---
 
-## Licencja
+## License
 
-Używaj, modyfikuj, wdrażaj — śmiało. Ale **nie podszywaj się pod autora i nie przypisuj sobie autorstwa**. Pełna treść: [`LICENSE`](LICENSE).
+Use it, modify it, deploy it — go ahead. But **do not impersonate the author or claim authorship**. Full text: [`LICENSE`](LICENSE).
 
-> *Używaj jak chcesz — ale jak się podszyjesz i ukradniesz, ryzykujesz własnymi nogami.* — NewLife
+> *Use it as you like — but if you impersonate and steal it, you risk your own legs.* — NewLife

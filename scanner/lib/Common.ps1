@@ -22,21 +22,109 @@ function Write-AgLog {
     Write-Host ("[{0}] [{1,-5}] {2}" -f $ts, $Level, $Message) -ForegroundColor $color
 }
 
+# Mapa: kolektor -> endpoint Microsoft Graph, który za niego odpowiada (pokazywany w outpucie
+# po zalogowaniu — operator widzi DOKŁADNIE skąd lecą dane). Krótkie ścieżki względem /v1.0
+# (lub /beta gdzie zaznaczono); pełne URI żyją w Collectors.ps1.
+$script:AgConnectorApi = @{
+    users        = 'GET /users (+$expand manager, beta signInActivity)'
+    roles        = 'GET /roleManagement/directory/roleAssignments (+schedules)'
+    groups       = 'GET /groups (+/members)'
+    apps         = 'GET /servicePrincipals + /applications + /oauth2PermissionGrants'
+    authMethods  = 'GET /reports/authenticationMethods/userRegistrationDetails'
+    signIns      = 'GET /auditLogs/signIns'
+    audit        = 'GET /auditLogs/directoryAudits'
+    spSignIns    = 'GET beta/reports/servicePrincipalSignInActivities'
+    riskyUsers   = 'GET /identityProtection/riskyUsers'
+    caPolicies   = 'GET /identity/conditionalAccess/policies'
+}
+
+# Tabela "CONNECTOR MAP" — drukowana RAZ przed zbieraniem: dla każdego aktywnego kolektora
+# pokazuje endpoint Microsoft Graph, który za niego odpowiada, oraz jedno zdanie PO CO go ruszamy.
+# To czytelna "legenda" hakerskiego skanu (API żyje tu, w górnej części outputu).
+function Show-AgConnectorMap {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Names)
+    $rule = '  ' + [char]0x250C + [char]0x2500 + ' ' + (T 'conn.map_title') + ' '
+    $rule += [string]([char]0x2500) * [math]::Max(3, 70 - $rule.Length) + [char]0x2510
+    Write-Host ''
+    Write-Host $rule -ForegroundColor Green
+    foreach ($name in $Names) {
+        $api = $script:AgConnectorApi[$name]
+        if (-not $api) { continue }
+        Write-Host '   ' -NoNewline
+        Write-Host ([char]0x25B8 + ' ') -ForegroundColor Cyan -NoNewline                          # ▸
+        Write-Host ("{0,-12}" -f $name.ToUpper()) -ForegroundColor Cyan -NoNewline
+        Write-Host $api -ForegroundColor DarkGray
+        foreach ($wline in (Split-AgWrap -Text ([char]0x203A + ' ' + (T "conn.why.$name")) -Width 78 -Indent 7)) {
+            Write-Host $wline -ForegroundColor Gray
+        }
+    }
+    Write-Host ('  ' + [char]0x2514 + [string]([char]0x2500) * 68 + [char]0x2518) -ForegroundColor Green  # └───┘
+}
+
+# Hakerska linia "konektor wchodzi do akcji" — drukowana, gdy odpala się kolektor.
+# Zwięzła (endpoint Graph + opis żyją w tabeli CONNECTOR MAP wyżej): nazwa + "podpinam…".
+function Write-AgConnector {
+    param([Parameter(Mandatory)][string]$Name)
+    Write-Host '   ' -NoNewline
+    Write-Host ([string]([char]0x2504) * 2 + [char]0x25B6) -ForegroundColor DarkCyan -NoNewline  # ┄┄▶
+    Write-Host (' ' + [char]0x27E6 + ' ') -ForegroundColor DarkGray -NoNewline                   #  ⟦
+    Write-Host ("{0,-12}" -f $Name.ToUpper()) -ForegroundColor Cyan -NoNewline
+    Write-Host ([char]0x27E7 + ' ') -ForegroundColor DarkGray -NoNewline                          #  ⟧
+    Write-Host (T 'conn.engage') -ForegroundColor DarkGray
+}
+
+# Deszyfrujący "reveal" pojedynczej linii wyniku: z losowego szumu znaków wyłania się właściwy
+# tekst (jak łamanie szyfru) — spójny hakerski sznyt z Show-AgReveal. Gdy output jest
+# przekierowany (CI/plik), animację pomijamy i drukujemy od razu czysty wiersz.
+function Write-AgHarvest {
+    param([Parameter(Mandatory)][string]$Message, [string]$Marker = '+')
+    # Usuń ewentualny prefiks "  \-> " z gotowych stringów scan.got.* — marker [+] go zastępuje.
+    $msg = $Message -replace '^\s*\\->\s*', ''
+    $redirected = $false
+    try { $redirected = [Console]::IsOutputRedirected } catch { $redirected = $true }
+    if ($redirected) {
+        Write-Host ("   [{0}] {1}" -f $Marker, $msg) -ForegroundColor Green
+        return
+    }
+    $glitch = '0123456789ABCDEF#%&$*<>/\|=+-~'.ToCharArray()
+    $chars = $msg.ToCharArray()
+    $n = $chars.Length
+    $resolved = [bool[]]::new($n)
+    # Dwa razy wolniej niż wcześniej (więcej klatek + dłuższy odstęp) — efekt "łamania szyfru"
+    # ma być czytelny i widowiskowy, nie migać.
+    $steps = 10
+    $dwell = 52
+    for ($s = 1; $s -le $steps; $s++) {
+        $sb = [System.Text.StringBuilder]::new($n)
+        for ($i = 0; $i -lt $n; $i++) {
+            if ($chars[$i] -eq ' ') { [void]$sb.Append(' ') }
+            elseif ($resolved[$i]) { [void]$sb.Append($chars[$i]) }
+            elseif ((Get-Random -Maximum $steps) -lt $s) { $resolved[$i] = $true; [void]$sb.Append($chars[$i]) }
+            else { [void]$sb.Append($glitch[(Get-Random -Maximum $glitch.Length)]) }
+        }
+        Write-Host ("`r   [" + $Marker + '] ') -ForegroundColor DarkGray -NoNewline
+        Write-Host $sb.ToString() -ForegroundColor DarkCyan -NoNewline
+        Start-Sleep -Milliseconds $dwell
+    }
+    Write-Host ("`r   [" + $Marker + '] ') -ForegroundColor DarkGray -NoNewline
+    Write-Host $msg -ForegroundColor Green
+}
+
 function Write-AgBanner {
     param([string]$Version = '0.0.0')
     # ŻADNEGO brandingu AccessGuy przed logowaniem — logo "wyłania się" DOPIERO po udanym
     # logowaniu (Show-AgReveal). Tu tylko rzeczowa informacja: jakich uprawnień użyjemy.
     Write-Host ''
-    Write-Host "  Łączenie z Microsoft Entra ID (read-only)..." -ForegroundColor DarkGray
+    Write-Host (T 'banner.connecting') -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host "WYMAGANE UPRAWNIENIA (Microsoft Graph):" -ForegroundColor White
+    Write-Host (T 'banner.perms_title') -ForegroundColor White
     Write-Host "  [*] User.Read.All        Directory.Read.All" -ForegroundColor Gray
     Write-Host "  [*] AuditLog.Read.All    RoleManagement.Read.All" -ForegroundColor Gray
-    Write-Host "  [+] Application.Read.All  UserAuthenticationMethod.Read.All (zalecane)" -ForegroundColor DarkGray
-    Write-Host "  [+] Policy.Read.All       IdentityRiskyUser.Read.All        (zalecane)" -ForegroundColor DarkGray
-    Write-Host "PREREKWIZYTY:" -ForegroundColor White
-    Write-Host "  - Rola operatora: Global Reader (lub Security Reader + Reports Reader)" -ForegroundColor Gray
-    Write-Host "  - Licencja tenanta: Entra ID P1/P2 (dla signInActivity), P2 dla pełnego PIM`n" -ForegroundColor Gray
+    Write-Host ("  [+] Application.Read.All  UserAuthenticationMethod.Read.All $(T 'banner.recommended')") -ForegroundColor DarkGray
+    Write-Host ("  [+] Policy.Read.All       IdentityRiskyUser.Read.All        $(T 'banner.recommended')") -ForegroundColor DarkGray
+    Write-Host (T 'banner.prereq_title') -ForegroundColor White
+    Write-Host (T 'banner.prereq_role') -ForegroundColor Gray
+    Write-Host ((T 'banner.prereq_lic') + "`n") -ForegroundColor Gray
 }
 
 # === Branding AccessGuy (do efektu po udanym logowaniu) ======================
@@ -98,30 +186,19 @@ function Show-AgReveal {
     try { [Console]::CursorVisible = $true } catch { }
 }
 
-# Hakerski box podsumowania: co skaner złapał + podpis NewLife.
+# Hakerski box podsumowania: co skaner złapał + krótki "intel" o konektorach + podpis NewLife.
 function Show-AgScanSummary {
     param([hashtable]$Counts, [int]$WarningCount = 0)
-    # Ordered: label -> klucz w $Counts. (Zwykła tablica par PS by spłaszczyła.)
-    $rows = [ordered]@{
-        'Konta (users)'      = 'users'
-        'Grupy'              = 'groups'
-        'Przypisania ról'    = 'roles'
-        'Aplikacje / SP'     = 'apps'
-        'Rejestracje app'    = 'applications'
-        'Zgody OAuth'        = 'grants'
-        'Rejestracje MFA'    = 'mfa'
-        'Wpisy audytu (PIM)' = 'audit'
-        'Logowania (30 dni)' = 'signins'
-        'Licencje (SKU)'     = 'skus'
-        'Polityki CA'        = 'capolicies'
-        'Konta atRisk (IdP)' = 'riskyusers'
-    }
+    # Kolejność prezentacji konektorów. Każdy wiersz: klucz w $Counts -> etykieta (sum.row.*) + intel (intel.*).
+    # [ordered] tablica par; zwykła by się spłaszczyła pod PowerShellem.
+    $order = @('users','groups','roles','apps','applications','grants','mfa','audit','signins','skus','capolicies','riskyusers')
+
     Write-Host ''
     Write-Host '  +======================================================================+' -ForegroundColor Green
-    Write-Host '  |   SKAN ZAKOŃCZONY -- OTO CO UDALO SIE ZLAPAC                          |' -ForegroundColor Green
+    Write-Host ('  |   {0,-66} |' -f (T 'sum.title')) -ForegroundColor Green
     Write-Host '  +======================================================================+' -ForegroundColor Green
-    foreach ($label in $rows.Keys) {
-        $key = $rows[$label]
+    foreach ($key in $order) {
+        $label = T ("sum.row.$key")
         $val = if ($Counts -and $Counts.ContainsKey($key)) { [int]$Counts[$key] } else { 0 }
         $dots = '.' * [math]::Max(2, 24 - $label.Length)
         Write-Host '    [' -ForegroundColor DarkGray -NoNewline
@@ -129,17 +206,39 @@ function Show-AgScanSummary {
         Write-Host ('] {0} {1} ' -f $label, $dots) -ForegroundColor Gray -NoNewline
         Write-Host $val -ForegroundColor White
     }
+    $wLabel = T 'sum.warnings'
     $wc = if ($WarningCount -gt 0) { 'Yellow' } else { 'DarkGreen' }
-    $dots = '.' * [math]::Max(2, 24 - 'Ostrzeżenia'.Length)
+    $dots = '.' * [math]::Max(2, 24 - $wLabel.Length)
     Write-Host '    [' -ForegroundColor DarkGray -NoNewline
     Write-Host '!' -ForegroundColor $wc -NoNewline
-    Write-Host ('] {0} {1} ' -f 'Ostrzeżenia', $dots) -ForegroundColor Gray -NoNewline
+    Write-Host ('] {0} {1} ' -f $wLabel, $dots) -ForegroundColor Gray -NoNewline
     Write-Host $WarningCount -ForegroundColor $wc
     Write-Host '  +======================================================================+' -ForegroundColor Green
+
+    # (Sekcja INTEL z 2-zdaniowymi opisami per konektor USUNIĘTA — przeniesiona w zwięzłej formie
+    # do tabeli CONNECTOR MAP na górze skanu; tu zostaje sam podpis.)
     Write-Host ''
-    Write-Host '   "Nie sprzedam Twoich danych. Ufasz mi?"  ' -ForegroundColor Cyan -NoNewline
+    Write-Host (T 'sum.quote') -ForegroundColor Cyan -NoNewline
     Write-Host '-- NewLife' -ForegroundColor White
     Write-Host ''
+}
+
+# Proste zawijanie tekstu po słowach (do stałej szerokości, ze wcięciem) — dla sekcji INTEL.
+function Split-AgWrap {
+    param([Parameter(Mandatory)][string]$Text, [int]$Width = 80, [int]$Indent = 7)
+    $pad = ' ' * $Indent
+    $max = [math]::Max(20, $Width - $Indent)
+    $out = [System.Collections.Generic.List[string]]::new()
+    $cur = ''
+    foreach ($word in ($Text -split '\s+')) {
+        if ($cur -and (($cur.Length + 1 + $word.Length) -gt $max)) {
+            $out.Add($pad + $cur); $cur = $word
+        }
+        elseif ($cur) { $cur = "$cur $word" }
+        else { $cur = $word }
+    }
+    if ($cur) { $out.Add($pad + $cur) }
+    return $out.ToArray()
 }
 
 # Lista wymaganych scope'ów — jedno źródło prawdy dla auth i preflight.
@@ -301,7 +400,7 @@ function Invoke-AgGraphPaged {
                     $wait = 0
                     try { $wait = [int]$_.Exception.Response.Headers.RetryAfter.Delta.TotalSeconds } catch { }
                     if ($wait -le 0) { $wait = [int][math]::Min(60, [math]::Pow(2, $attempt)) }
-                    Write-AgLog -Level WARN -Message ("Graph $status — ponawiam $attempt/$MaxRetries za ${wait}s ...")
+                    Write-AgLog -Level WARN -Message ((T 'graph.retry') -f $status, $attempt, $MaxRetries, $wait)
                     Start-Sleep -Seconds $wait
                     continue
                 }

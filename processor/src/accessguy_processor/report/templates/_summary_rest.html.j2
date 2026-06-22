@@ -1,0 +1,152 @@
+{# Reszta widoku summary (bez oceny A–F — ta jest w _summary_grade). W raporcie połączonym
+   ląduje NA SAMYM DOLE, pod zakładkami. Wymaga: dataset, community, groups_view, apps_view,
+   overview, action_plan, escalation_paths, posture, sevbar, combined, links. #}
+
+{% if posture %}
+<section>
+  <h2>{{ tr('tmpl.sum.posture_h2') }}</h2>
+  <p class="muted" style="margin:4px 0 14px">{{ tr('tmpl.sum.posture_intro') }}</p>
+  <div class="ag-grid">
+    {% if posture.ca_collected %}
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.posture.ca_h3') }}</h3>
+      <div class="ag-meta">{{ tr('tmpl.posture.ca_policies') }} <strong>{{ posture.ca_total }}</strong> ·
+        {{ tr('tmpl.posture.ca_enabled') }} <strong>{{ posture.ca_enabled }}</strong> ·
+        report-only: <strong class="{{ 'warnv' if posture.ca_report_only }}">{{ posture.ca_report_only }}</strong></div>
+      <p>{{ tr('tmpl.posture.ca_mfa') }} <strong class="{{ 'critv' if not posture.ca_mfa_policies }}">{{ posture.ca_mfa_policies }}</strong> ·
+        {{ tr('tmpl.posture.ca_legacy') }} <strong class="{{ 'critv' if not posture.ca_legacy_block }}">{{ posture.ca_legacy_block }}</strong></p>
+      <p>{{ tr('tmpl.posture.ca_excluded') }} <strong class="{{ 'critv' if posture.mfa_excluded_count }}">{{ posture.mfa_excluded_count }}</strong> ·
+        {{ tr('tmpl.posture.ca_risky') }} <strong class="{{ 'critv' if posture.risky_user_count }}">{{ posture.risky_user_count }}</strong></p>
+    </div>
+    {% endif %}
+    {% if posture.tenant_policies %}
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.posture.tp_h3') }}</h3>
+      {% set tp = posture.tenant_policies %}
+      <p>{{ tr('tmpl.posture.security_defaults') }} <strong>{{ tr('tmpl.val.enabled') if tp.security_defaults_enabled else (tr('tmpl.val.disabled') if tp.security_defaults_enabled is false else '—') }}</strong></p>
+      <p>{{ tr('tmpl.posture.tp_consent') }} <strong class="{{ 'warnv' if tp.users_can_consent_to_apps }}">{{ tr('tmpl.val.allowed') if tp.users_can_consent_to_apps else (tr('tmpl.val.blocked') if tp.users_can_consent_to_apps is false else '—') }}</strong></p>
+      <p>{{ tr('tmpl.posture.tp_register') }} <strong>{{ tr('tmpl.val.allowed') if tp.users_can_register_apps else (tr('tmpl.val.blocked') if tp.users_can_register_apps is false else '—') }}</strong></p>
+      <p>{{ tr('tmpl.posture.tp_guest') }} <strong>{{ tp.guest_user_access or '—' }}</strong>
+        {% if tp.weak_auth_methods_enabled %} · {{ tr('tmpl.posture.tp_weak') }} <strong class="warnv">{{ tp.weak_auth_methods_enabled | join(', ') }}</strong>{% endif %}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% if posture.findings %}
+  <ul class="ag-top" style="margin-top:12px">
+    {% for f in posture.findings %}
+    <li><span class="badge {{ f.severity }}">{{ f.severity }}</span> {{ f.text }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">{{ tr('tmpl.sum.posture_clean') }}</p>{% endif %}
+</section>
+{% endif %}
+
+{% if escalation_paths %}
+<section>
+  <h2>{{ tr('tmpl.sum.esc_h2') }}</h2>
+  <p class="muted" style="margin:4px 0 14px">{{ tr('tmpl.sum.esc_intro') }}</p>
+  <div class="ag-chains">
+    {% for p in escalation_paths %}
+    <div class="ag-chain sev-{{ p.severity }}">
+      <div class="ag-chain-head"><span class="badge {{ p.severity }}">{{ p.severity }}</span> <strong>{{ p.title }}</strong></div>
+      <div class="ag-chain-flow">
+        {% for s in p.steps %}<span class="ag-chain-step">{{ s }}</span>{% if not loop.last %}<span class="ag-chain-arrow">→</span>{% endif %}{% endfor %}
+      </div>
+      <div class="ag-chain-ev muted">{{ tr('tmpl.sum.esc_evidence') }} {{ p.evidence }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if action_plan %}
+<section>
+  <h2>{{ tr('tmpl.sum.plan_h2') }}</h2>
+  <p class="muted" style="margin:4px 0 14px">{{ tr('tmpl.sum.plan_intro') }}</p>
+  <ol class="ag-plan">
+    {% for step in action_plan %}
+    <li class="ag-plan-step sev-{{ step.severity }}">
+      <div class="ag-plan-head">
+        <span class="badge {{ step.severity }}">{{ step.severity }}</span>
+        <strong>{{ step.title }}</strong>
+        <span class="acct-tag">{{ step.module }}</span>
+        <span class="ag-plan-count">{{ tr('tmpl.summary.plan_count', count=step.count, points=step.points) }}</span>
+      </div>
+      <div class="ag-plan-rec">→ {{ step.recommendation }}</div>
+      <div class="ag-plan-ex muted">{{ tr('tmpl.sum.plan_eg') }}
+        {% for ex in step.examples %}<a class="ag-link" {% if combined %}href="#obj-{{ ex.id }}" data-tab="{{ step.module_key }}"{% else %}href="{{ links[step.module_key] }}#obj-{{ ex.id }}"{% endif %}>{{ ex.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        {%- if step.count > step.examples|length %} … (+{{ step.count - step.examples|length }}){% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+<section>
+  <h2>{{ tr('tmpl.sum.modules_h2') }}</h2>
+  <div class="ag-grid">
+    {% for m in overview.modules %}
+    <div class="ag-box">
+      <h3>{{ m.label }}
+        <span class="ag-grade-inline grade-{{ m.grade }}">{{ m.grade }}</span>
+      </h3>
+      <div class="ag-meta">{{ tr('tmpl.meta.objects') }}: <strong>{{ m.total }}</strong></div>
+      <p>
+        <span class="badge critical">{{ m.sev['critical'] }}</span>
+        <span class="badge high">{{ m.sev['high'] }}</span>
+        <span class="badge medium">{{ m.sev['medium'] }}</span>
+        <span class="badge low">{{ m.sev['low'] }}</span>
+      </p>
+      <p class="muted">{{ tr('tmpl.sum.headline') }} {{ m.headline }}</p>
+      {% if m.key in ('users', 'groups', 'apps') %}
+      {% if combined %}
+      <a class="ag-btn" href="#tab-{{ m.key }}" data-tab="{{ m.key }}">{{ tr('tmpl.sum.open_tab', module=m.label) }}</a>
+      {% else %}
+      <a class="ag-btn" href="{{ links[m.key] }}">{{ tr('tmpl.sum.report_btn', module=m.label) }}</a>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.sum.dist_h2') }}</h2>
+  <div class="ag-grid">
+    <div class="ag-box">{{ sevbar(tr('community.module.users'), community.account_total, community.sev_counts) }}</div>
+    <div class="ag-box">{{ sevbar(tr('community.module.groups'), groups_view.group_total, groups_view.sev_counts) }}</div>
+    <div class="ag-box">{{ sevbar(tr('community.module.apps'), apps_view.app_total, apps_view.sev_counts) }}</div>
+  </div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.sum.top_h2') }}</h2>
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>{{ tr('community.module.users') }}</h3>
+      {% if community.top_findings %}
+      <ul class="ag-top">{% for t in community.top_findings %}<li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <a class="ag-link" {% if combined %}href="#obj-{{ t.id }}" data-tab="users"{% else %}href="{{ links.users }}#obj-{{ t.id }}"{% endif %}><strong>{{ t.upn }}</strong></a> — {{ t.headline }}</li>{% endfor %}</ul>
+      {% else %}<span class="muted">{{ tr('tmpl.val.none') }}</span>{% endif %}
+    </div>
+    <div class="ag-box">
+      <h3>{{ tr('community.module.groups') }}</h3>
+      {% if groups_view.top_findings %}
+      <ul class="ag-top">{% for t in groups_view.top_findings %}<li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <a class="ag-link" {% if combined %}href="#obj-{{ t.id }}" data-tab="groups"{% else %}href="{{ links.groups }}#obj-{{ t.id }}"{% endif %}><strong>{{ t.name }}</strong></a> — {{ t.headline }}</li>{% endfor %}</ul>
+      {% else %}<span class="muted">{{ tr('tmpl.val.none') }}</span>{% endif %}
+    </div>
+    <div class="ag-box">
+      <h3>{{ tr('community.module.apps') }}</h3>
+      {% if apps_view.top_findings %}
+      <ul class="ag-top">{% for t in apps_view.top_findings %}<li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <a class="ag-link" {% if combined %}href="#obj-{{ t.id }}" data-tab="apps"{% else %}href="{{ links.apps }}#obj-{{ t.id }}"{% endif %}><strong>{{ t.name }}</strong></a> — {{ t.headline }}</li>{% endfor %}</ul>
+      {% else %}<span class="muted">{{ tr('tmpl.val.none') }}</span>{% endif %}
+    </div>
+  </div>
+</section>
+
+{% if dataset.scan_context.warnings %}
+<section class="ag-warn">
+  <strong>{{ tr('tmpl.warn.scan') }}</strong>
+  <ul>{% for w in dataset.scan_context.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</section>
+{% endif %}

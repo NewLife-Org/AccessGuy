@@ -1,0 +1,190 @@
+# AccessGuy — English overlay for rules.yaml (title + recommendation, keyed by rule id).
+# The canonical rubric (logic, points, severity, thresholds) lives in rules.yaml (Polish).
+# This file ONLY translates the human-readable title/recommendation. Missing id => Polish base
+# is kept. See processor `rules.py::_apply_overlay`. Add rules.de.yaml the same way for German.
+
+rules:
+  INACTIVE_90:
+    title: "Account inactive > 90 days"
+    recommendation: "Confirm with the business whether the account is still needed; consider disabling it."
+  INACTIVE_180:
+    title: "Account inactive > 180 days"
+    recommendation: "Urgent review — a candidate for disabling/offboarding."
+  NEVER_SIGNED_IN:
+    title: "Active, licensed account that never signed in"
+    recommendation: "Verify that the account and its assigned license are justified."
+  STALE_GUEST:
+    title: "Inactive / unaccepted guest"
+    recommendation: "Remove or confirm the collaboration; the invitation is pending/unused."
+  GUEST_PRIVILEGED:
+    title: "Guest with a privileged role"
+    recommendation: "Verify immediately — a guest should not hold privileged roles."
+  EXT_PRIVILEGED:
+    title: "External (member) account with a privileged role"
+    recommendation: "Verify the justification; consider moving to PIM-eligible or revoking."
+  PERMANENT_PRIVILEGE:
+    title: "Permanent (non-PIM) privileged role assignment"
+    recommendation: "Move to PIM (eligible + just-in-time activation)."
+  ELIGIBLE_NEVER_USED:
+    title: "PIM-eligible role never activated in the observation window"
+    recommendation: "Consider revoking the eligible assignment — it is unused."
+  PRIV_NO_MFA:
+    title: "Privileged account without registered MFA"
+    recommendation: "Enforce MFA registration / conditional access immediately."
+  NO_MFA:
+    title: "No registered MFA"
+    recommendation: "Enforce MFA registration."
+  RECENT_ROLE_GRANT:
+    title: "Recently granted role — to be confirmed"
+    recommendation: "Confirm the grant was authorized (change within the observation window)."
+  HIGH_RISK_APP:
+    title: "Consent to a high-risk application"
+    recommendation: "Verify the OAuth consent and the application's permission scope."
+  DISABLED_WITH_ASSETS:
+    title: "Disabled account still holding a role and/or license"
+    recommendation: "Strip roles/licenses from the disabled account (hygiene, cost)."
+  LICENSE_WASTE:
+    title: "License assigned, account inactive"
+    recommendation: "Release the license — cost + attack surface."
+  NO_MANAGER_PRIVILEGED:
+    title: "Privileged account with no assigned manager"
+    recommendation: "Assign an owner/manager (governance, attestation)."
+  SYNC_ANOMALY:
+    title: "Privileged account synced from on-prem"
+    recommendation: "Consider a cloud-only account for privileged roles (separation)."
+  UNUSED_PRIVILEGE:
+    title: "Privileged permissions held but unused"
+    recommendation: "The account holds an active privileged role but does not sign in / use it — consider revoking it or moving to PIM-eligible."
+  RISKY_SIGNINS:
+    title: "Sign-ins flagged risky (Identity Protection)"
+    recommendation: "Review the risky sign-ins — a possible incident (compromise, impossible travel). Verify and enforce a reset/MFA."
+  LEGACY_AUTH_SUCCESS:
+    title: "SUCCESSFUL legacy-auth sign-in (MFA bypass)"
+    recommendation: "A real MFA bypass — a legacy protocol authenticated the account. Urgently identify the source (device/app/service mailbox), enforce modern authentication and disable that protocol on the mailbox."
+  LEGACY_AUTH_BLOCKED:
+    title: "Legacy-auth attempts (blocked)"
+    recommendation: "Legacy attempts appear in the log but were blocked (e.g. by Conditional Access) — this is NOT a takeover. Review the protocol list: some (e.g. Authenticated SMTP for printers) may be deliberately tolerated. If none are needed, shut them off at the mailbox level."
+  NIGHT_SIGNINS:
+    title: "Sign-ins at unusual hours (night 20:00–04:00)"
+    recommendation: "Confirm whether night activity is expected (e.g. automation/time zones) — otherwise investigate. The rule fires from the nightSignInWarn threshold; for privileged accounts from the very first night sign-in."
+  STALE_PASSWORD:
+    title: "Old password on an account without MFA"
+    recommendation: "Enable MFA (priority) — then password age stops mattering. Alternatively go passwordless (FIDO2/Windows Hello). The rule is skipped for accounts with MFA."
+  MANY_FAILED_SIGNINS:
+    title: "Many failed sign-ins (possible attack)"
+    recommendation: "A high number of failed sign-ins in the window — a typical password-spray / brute-force signal. Check the sources (IPs, countries), consider smart lockout, MFA and blocking legacy auth."
+  MULTIPLE_PRIV_ROLES:
+    title: "Account with multiple privileged roles"
+    recommendation: "Accumulating privileged roles on one account — a violation of least privilege and a single point of total compromise. Separate duties, move to PIM-eligible."
+  NEW_PRIVILEGED_ACCOUNT:
+    title: "Freshly created privileged account"
+    recommendation: "An account with a privileged role was created recently — verify who created it and why (potential post-breach persistence)."
+  GUEST_WITH_LICENSE:
+    title: "Guest with an assigned license"
+    recommendation: "A guest account holds a paid license — usually a needless cost and an expanded surface. Verify the justification; guests typically do not need a license."
+  EXTERNAL_MEMBER:
+    title: "External account as a member"
+    recommendation: "An identity outside the verified domains appears as 'member' (not guest) — bypassing some B2B policies. Confirm whether it should be an internal account or a guest."
+  PRIV_COMPROMISE_SIGNALS:
+    title: "Hard attack signals on a privileged account"
+    recommendation: "An account with an effective privileged role (direct or via a group) has HARD attack evidence in the logs — authentication actually happened in a suspicious way (risky sign-in / successful legacy auth) or Identity Protection confirms unhandled risk. The evidence lists the specific signals with counts and a time window. Treat it as an incident: review the sign-ins (IPs, countries, devices), reset credentials, enforce MFA, check for persistence (new app secrets, mailbox rules, devices)."
+  RISKY_USER_UNREMEDIATED:
+    title: "Unhandled account risk (Identity Protection)"
+    recommendation: "Identity Protection flagged the account as atRisk/confirmedCompromised and the alert is sitting unhandled — nobody reset the password or verified the event. Go to Entra ID → Identity Protection → Risky users: investigate the detections, enforce a password reset + MFA, or deliberately dismiss it with a note."
+  CA_MFA_EXCLUDED:
+    title: "Account excluded from MFA policies (Conditional Access)"
+    recommendation: "The account is excluded from enabled Conditional Access policies that require MFA (directly or via a group) — registering MFA does nothing if a policy never enforces it. Exclusions can be legitimate (break-glass accounts), but they must be countable, documented and monitored. Verify each one and remove the unnecessary."
+  SHADOW_PRIVILEGE:
+    title: "Privileged role inherited through a group"
+    recommendation: "The account has no direct role assignment but inherits a privileged role through group membership — a classic blind spot of access reviews. Include role-assignable groups in the role review, verify the membership justification, consider PIM for Groups."
+
+groupRules:
+  GROUP_ROLE_ASSIGNABLE_PRIV:
+    title: "Role-assignable group with a privileged role"
+    recommendation: "Top priority — every member of the group inherits a privileged role. Keep membership to a minimum, enable PIM for Groups and review the owners."
+  GROUP_ROLE_ASSIGNABLE:
+    title: "Role-assignable group (assignable to roles)"
+    recommendation: "The group can receive directory roles (isAssignableToRole). Confirm the justification and watch who can edit membership."
+  GROUP_OWNERLESS:
+    title: "Group without an owner"
+    recommendation: "Assign at least one owner — ownerless groups are not attested and grow indefinitely (governance)."
+  GROUP_DYNAMIC_MEMBERSHIP:
+    title: "Dynamic membership — rule to review"
+    recommendation: "Review the membershipRule — an overly broad rule can automatically grant access/licenses to unintended accounts."
+  GROUP_GUESTS_WITH_ACCESS:
+    title: "Guests in a group that grants access"
+    recommendation: "The group grants roles/licenses/access and contains guests. Confirm whether external accounts should inherit this access."
+  GROUP_PUBLIC_M365:
+    title: "Public Microsoft 365 group"
+    recommendation: "A 'Public' M365 group — anyone in the organization can join and read its content (Teams/SharePoint). Consider 'Private' if the content is sensitive."
+  GROUP_ONPREM_ROLE:
+    title: "On-prem group assigned to a role"
+    recommendation: "A group synced from on-prem AD grants a cloud role — an on-prem compromise escalates into Entra. Consider a cloud-only role-assignable group."
+  GROUP_LICENSE_NO_MEMBERS:
+    title: "Group with licenses but no members"
+    recommendation: "The group assigns licenses but is empty — potentially wasted licenses or dead config. Verify."
+  GROUP_EMPTY:
+    title: "Empty security group"
+    recommendation: "An empty security/M365 group — directory hygiene. Delete if unused."
+  GROUP_LARGE_PRIVILEGED:
+    title: "Large group granting permissions"
+    recommendation: "The group grants privileged roles and has many members — a huge blast radius (every member = admin). Keep membership to a minimum and enable PIM for Groups."
+  GROUP_DYNAMIC_PRIVILEGED:
+    title: "Dynamic group granting access"
+    recommendation: "The membership rule automatically grants roles/licenses — changing an account attribute can silently grant permissions. Verify the rule and its scope; do not use dynamics for privileged roles."
+  GROUP_NESTED:
+    title: "Nested group (sub-groups)"
+    recommendation: "The group contains other groups — effective access is harder to audit (inheritance). Consider flattening the structure for groups that grant access."
+  GROUP_PRIV_WEAK_MEMBERS:
+    title: "Weakly protected members of a privileged group"
+    recommendation: "The group grants a privileged role and the named members are weakly protected (no MFA / successful legacy auth / risky sign-ins) — each is an unprotected admin and a ready escalation path. Enforce MFA on the members or remove them from the group; consider PIM for Groups."
+
+appRules:
+  APP_HIGH_RISK_PERM:
+    title: "Application with a privileged application permission"
+    recommendation: "An app-only permission works without a user — compromising the app = access to the tenant. Verify the justification, narrow the scope, consider delegated permissions."
+  APP_BROAD_READ:
+    title: "Application with bulk read (app-only)"
+    recommendation: "The application reads tenant-wide data with no user context. Confirm the integration actually needs it (least privilege)."
+  APP_SECRET_EXPIRED:
+    title: "Expired credential on an active application"
+    recommendation: "The secret/certificate has expired while the app is enabled — either it is unused (remove the credential) or the integration is broken. Clean it up."
+  APP_SECRET_EXPIRING:
+    title: "Credential expiring soon"
+    recommendation: "Plan the rotation before expiry to avoid an integration outage."
+  APP_LONG_LIVED_SECRET:
+    title: "Very long-lived credential"
+    recommendation: "A credential valid for >2 years widens the leak window. Shorten the lifetime and introduce rotation (preferably a certificate from Key Vault)."
+  APP_SECRET_OVER_CERT:
+    title: "Client secret instead of a certificate"
+    recommendation: "A client secret leaks more easily than a certificate. Migrate to a certificate (or workload identity federation)."
+  APP_NO_OWNER:
+    title: "Application without an owner"
+    recommendation: "No owner = no attestation and nobody feels accountable. Assign a business/technical owner."
+  APP_MULTI_TENANT:
+    title: "Multi-tenant application"
+    recommendation: "signInAudience allows sign-in from other tenants/accounts. Confirm it is intended — otherwise narrow it to AzureADMyOrg."
+  APP_UNVERIFIED_PRIVILEGED:
+    title: "Privileged application without a verified publisher"
+    recommendation: "An application with a high-risk permission has no verified publisher (MPN). Verify its origin before keeping the access."
+  APP_CREDENTIAL_SPRAWL:
+    title: "Application credential sprawl"
+    recommendation: "Many active secrets/certificates on one application — harder to rotate and control, a wider leak window. Keep the minimum, ideally a single certificate."
+  APP_WIDE_CONSENT:
+    title: "Application with broad user consent"
+    recommendation: "Many users individually consented to this application — large data exposure and a classic 'illicit consent' vector. Review the consent scopes and consider an admin consent policy."
+  APP_ORPHANED:
+    title: "Abandoned application with a live credential"
+    recommendation: "The application has no owner and no assigned users, yet still holds a credential — likely a forgotten integration. Remove it or assign an owner; dead apps with secrets are an attack target."
+  APP_PRIV_OWNER_WEAK:
+    title: "Weakly protected owner of a privileged application"
+    recommendation: "An owner of an application with high-risk app-only permissions can add their own credential and act as the application (no MFA, no user). Enforce MFA on the owners, keep the owner list minimal, and monitor 'Add service principal credential' events in the audit log."
+  APP_GUEST_REACH:
+    title: "Guests with access to the application"
+    recommendation: "External (guest) accounts have access to the application — directly or via an assigned group containing guests. Confirm it is intended; guest access to internal integrations is a common data-exfiltration channel."
+  APP_DORMANT_PRIVILEGED:
+    title: "Dormant application with high-risk permissions"
+    recommendation: "The application holds high-risk app-only permissions but its service principal has not signed in for a long time (or ever) — an unused payload whose compromise grants full permissions with no trace of 'normal' use. Revoke the permissions or disable the application; if it must stay, document the owner and the use case."
+  APP_CREDENTIAL_ADDED:
+    title: "Recent application credential change"
+    recommendation: "The audit log recorded a recent secret/certificate addition or change (the evidence states who and when). Adding a credential is exactly the move an attacker makes after taking over an application owner — confirm with the author that it was planned (rotation) and tie it to your secret-management process."

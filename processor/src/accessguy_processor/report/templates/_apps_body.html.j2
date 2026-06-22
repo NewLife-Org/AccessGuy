@@ -1,0 +1,219 @@
+{# Ciało modułu APLIKACJE — współdzielone przez standalone (apps.html.j2) i raport połączony (index.html.j2).
+   Wymaga w kontekście: dataset, view (=apps_view), groups_by_id oraz makra `sevbar`. Kafelki interaktywne. #}
+<div class="ag-module" data-module="apps">
+
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ view.grade }}">
+    <span class="ag-grade-letter">{{ view.grade }}</span>
+    <span class="ag-grade-lbl">{{ tr('tmpl.apps.grade_lbl') }}</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>{{ tr('tmpl.apps.exec_h2') }}</h2>
+    <p class="ag-exec-note">{{ view.grade_note }}
+      {{ tr('tmpl.apps.high_risk') }} <strong class="{{ 'critv' if view.high_risk_count }}">{{ view.high_risk_count }}</strong> ·
+      {{ tr('tmpl.apps.expired') }} <strong class="{{ 'warnv' if view.expired_count }}">{{ view.expired_count }}</strong> ·
+      {{ tr('tmpl.apps.expiring') }} <strong>{{ view.expiring_count }}</strong> ·
+      {{ tr('tmpl.apps.no_owner') }} <strong class="{{ 'warnv' if view.no_owner_count }}">{{ view.no_owner_count }}</strong> ·
+      multi-tenant: <strong>{{ view.multi_tenant_count }}</strong>
+    </p>
+    {% if view.top_findings %}
+    <ul class="ag-top">
+      {% for t in view.top_findings %}
+      <li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <strong>{{ t.name }}</strong> — {{ t.headline }} <span class="muted">({{ tr('tmpl.points', points=t.score) }})</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">{{ tr('tmpl.apps.no_high_risk') }}</p>{% endif %}
+  </div>
+</section>
+
+{# Pasek rozkładu severity — zaraz po podsumowaniu, NAD kafelkami. #}
+<section class="ag-distrib">{{ sevbar(tr('community.module.apps'), view.app_total, view.sev_counts) }}</section>
+
+<section class="ag-summary">
+  <button type="button" class="ag-card ag-card-btn" data-filter-clear><span class="ag-num">{{ view.app_total }}</span><span class="ag-lbl">{{ tr('community.module.apps') }}</span></button>
+  <button type="button" class="ag-card ag-card-btn crit" data-filter-sev="critical"><span class="ag-num">{{ view.sev_counts['critical'] }}</span><span class="ag-lbl">Critical</span></button>
+  <button type="button" class="ag-card ag-card-btn high" data-filter-sev="high"><span class="ag-num">{{ view.sev_counts['high'] }}</span><span class="ag-lbl">High</span></button>
+  <button type="button" class="ag-card ag-card-btn {{ 'crit' if view.high_risk_count }}" data-filter-facet="highrisk"><span class="ag-num">{{ view.high_risk_count }}</span><span class="ag-lbl">{{ tr('tmpl.apps.card.high_risk') }}</span></button>
+  <button type="button" class="ag-card ag-card-btn {{ 'med' if view.expired_count }}" data-filter-facet="expired"><span class="ag-num">{{ view.expired_count }}</span><span class="ag-lbl">{{ tr('tmpl.apps.card.expired') }}</span></button>
+  <div class="ag-card"><span class="ag-num">{{ view.secret_total }}</span><span class="ag-lbl">{{ tr('tmpl.apps.card.secrets') }}</span></div>
+  <div class="ag-card"><span class="ag-num">{{ view.cert_total }}</span><span class="ag-lbl">{{ tr('tmpl.apps.card.certs') }}</span></div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.apps.char_h2') }}</h2>
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.apps.top_perm_h3') }}</h3>
+      {% if view.top_permissions %}
+      <table class="ag-table mini">
+        <thead><tr><th>{{ tr('tmpl.apps.col_perm') }}</th><th>{{ tr('tmpl.apps.col_apps') }}</th></tr></thead>
+        <tbody>
+          {% for name, n in view.top_permissions %}
+          <tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">{{ tr('tmpl.apps.top_perm_none') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.apps.high_risk_h3') }}</h3>
+      {% if view.high_risk_apps %}
+      <table class="ag-table mini">
+        <thead><tr><th>{{ tr('tmpl.apps.col_app') }}</th><th>{{ tr('tmpl.apps.col_perms') }}</th></tr></thead>
+        <tbody>
+          {% for a in view.high_risk_apps %}
+          <tr><td>{{ a.name }}</td><td>{{ a.perms }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">{{ tr('tmpl.apps.high_risk_none') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.apps.hygiene_h3') }}</h3>
+      <ul class="ag-list">
+        <li>{{ tr('tmpl.apps.hyg_expired') }} <strong class="{{ 'warnv' if view.expired_count }}">{{ view.expired_count }}</strong></li>
+        <li>{{ tr('tmpl.apps.hyg_expiring') }} <strong>{{ view.expiring_count }}</strong></li>
+        <li>{{ tr('tmpl.apps.hyg_no_owner') }} <strong class="{{ 'warnv' if view.no_owner_count }}">{{ view.no_owner_count }}</strong></li>
+        <li>{{ tr('tmpl.apps.hyg_multi') }} <strong>{{ view.multi_tenant_count }}</strong></li>
+        <li>{{ tr('tmpl.apps.hyg_sec_cert') }} <strong>{{ view.secret_total }}</strong> / <strong>{{ view.cert_total }}</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.apps.byrisk_h2') }} <span class="muted">{{ tr('tmpl.apps.byrisk_note') }}</span></h2>
+  {% include '_filterbar.html.j2' %}
+  {% for a in dataset.applications %}
+  {% set has_hr = a.high_risk_app_permissions %}
+  {% set has_exp = a.credentials and (a.credentials | selectattr('expired') | list) %}
+  <details class="acct sev-{{ a.severity }}" id="obj-{{ a.id }}"
+    data-facet="{% if has_hr %}highrisk {% endif %}{% if has_exp %}expired {% endif %}{% if a.is_multi_tenant %}multitenant {% endif %}{% if a.account_enabled is false %}disabled{% endif %}">
+    <summary>
+      <span class="badge {{ a.severity }}">{{ a.severity }}</span>
+      <span class="acct-score">{{ a.review_score }}</span>
+      <span class="acct-upn">{{ a.display_name }}</span>
+      {% if a.is_multi_tenant %}<span class="acct-tag">multi-tenant</span>{% endif %}
+      {% if a.account_enabled is false %}<span class="acct-tag">disabled</span>{% endif %}
+      <span class="acct-sig muted">
+        {%- if a.flags %}{{ a.flags[:2] | map(attribute='title') | join('; ') }}{% if a.flags|length > 2 %} (+{{ a.flags|length - 2 }}){% endif %}{% else %}{{ tr('tmpl.users.no_signals') }}{% endif -%}
+      </span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">App ID</span><span class="v">{{ a.app_id or '—' }}</span></div>
+        <div><span class="k">signInAudience</span><span class="v">{{ a.sign_in_audience or '—' }}</span></div>
+        <div><span class="k">{{ tr('tmpl.apps.fact.publisher') }}</span><span class="v">{{ a.verified_publisher or a.publisher_domain or tr('tmpl.apps.publisher_unverified') }}</span></div>
+        <div><span class="k">{{ tr('tmpl.apps.fact.owners') }}</span><span class="v">{% if a.owners %}{{ a.owners | join(', ') }}{% else %}—{% endif %}</span></div>
+        <div><span class="k">{{ tr('tmpl.fact.created') }}</span><span class="v">{{ a.created_date_time.strftime('%Y-%m-%d') if a.created_date_time else '—' }}</span></div>
+        <div><span class="k">{{ tr('tmpl.apps.fact.last_signin') }}</span><span class="v">{{ a.last_sign_in_date_time.strftime('%Y-%m-%d') if a.last_sign_in_date_time else '—' }}</span></div>
+      </div>
+
+      {% if a.credentials %}
+      <div class="acct-activity">
+        <strong>{{ tr('tmpl.apps.creds_label') }}</strong>
+        <table class="ag-table mini">
+          <thead><tr><th>{{ tr('tmpl.apps.cred_type') }}</th><th>{{ tr('tmpl.apps.cred_name') }}</th><th>{{ tr('tmpl.apps.cred_expires') }}</th><th>{{ tr('tmpl.apps.cred_status') }}</th></tr></thead>
+          <tbody>
+            {% for c in a.credentials %}
+            <tr>
+              <td>{{ c.kind }}</td>
+              <td>{{ c.display_name or '—' }}</td>
+              <td>{{ c.end_date_time.strftime('%Y-%m-%d') if c.end_date_time else '—' }}</td>
+              <td class="{% if c.expired %}critv{% elif c.days_to_expiry is not none and c.days_to_expiry <= 30 %}warnv{% endif %}">
+                {% if c.expired %}{{ tr('tmpl.apps.cred_expired') }}{% elif c.days_to_expiry is not none %}{{ tr('tmpl.apps.cred_in_days', days=c.days_to_expiry) }}{% else %}—{% endif %}
+                {%- if c.lifetime_days is not none %} <span class="muted">{{ tr('tmpl.apps.cred_lifetime', days=c.lifetime_days) }}</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="acct-activity muted">{{ tr('tmpl.apps.creds_none') }}</div>
+      {% endif %}
+
+      {% if a.credential_events %}
+      <div class="acct-activity">
+        <strong>{{ tr('tmpl.apps.credevents_label') }}</strong>
+        <table class="ag-table mini">
+          <thead><tr><th>{{ tr('tmpl.apps.ce_when') }}</th><th>{{ tr('tmpl.apps.ce_op') }}</th><th>{{ tr('tmpl.apps.ce_who') }}</th></tr></thead>
+          <tbody>
+            {% for e in a.credential_events | sort(attribute='activity_date_time', reverse=true) %}
+            <tr>
+              <td>{{ e.activity_date_time.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ e.activity }}</td>
+              <td>{{ e.actor or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if a.permissions %}
+      <div class="acct-roles"><strong>{{ tr('tmpl.apps.perms_label') }}</strong>
+        {% for p in a.permissions %}<span class="role {{ 'priv' if p.is_high_risk }}">{{ p.permission }} <span class="muted">({{ p.grant_type }})</span></span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if a.assigned_users %}
+      {% set assigned_groups = a.assigned_users | selectattr('type', 'equalto', 'group') | list %}
+      {% set assigned_people = a.assigned_users | rejectattr('type', 'equalto', 'group') | list %}
+      <details class="people">
+        <summary>{{ tr('tmpl.apps.assigned_summary', count=a.assigned_users|length) }}</summary>
+
+        {% if assigned_people %}
+        <div class="people-grp"><strong>{{ tr('tmpl.apps.assigned_people', count=assigned_people|length) }}</strong>
+          <ul>
+            {% for u in assigned_people %}
+            <li>{{ u.display_name }}{% if u.user_principal_name %} <span class="muted">· {{ u.user_principal_name }}</span>{% endif %}
+              <span class="ptype via-{{ u.via }}">{{ tr('tmpl.apps.via_assignment') if u.via == 'assignment' else tr('tmpl.apps.via_consent') }}{% if u.type != 'user' %} · {{ u.type }}{% endif %}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if assigned_groups %}
+        <div class="people-grp"><strong>{{ tr('tmpl.apps.assigned_groups', count=assigned_groups|length) }}</strong>
+          {% for g in assigned_groups %}
+          {% set grp = groups_by_id.get(g.id) %}
+          <details class="people nested">
+            <summary>{{ g.display_name }}{% if grp and grp.member_count is not none %} <span class="muted">{{ tr('tmpl.apps.group_members_count', count=grp.member_count) }}</span>{% endif %}</summary>
+            {% if grp and grp.members %}
+            <ul>
+              {% for m in grp.members %}
+              <li>{{ m.display_name }}{% if m.user_principal_name %} <span class="muted">· {{ m.user_principal_name }}</span>{% endif %}{% if m.type != 'user' %}<span class="ptype">{{ m.type }}</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% if grp.member_count is not none and grp.member_count > grp.members|length %}
+            <p class="muted" style="margin-top:6px">{{ tr('tmpl.apps.group_more', count=(grp.member_count - grp.members|length)) }}</p>
+            {% endif %}
+            {% else %}<span class="muted">{{ tr('tmpl.apps.group_members_none') }}</span>{% endif %}
+          </details>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+      {% endif %}
+
+      <div class="acct-flags">
+        {% for f in a.flags %}
+        <div class="flag">
+          <span class="flag-title {{ f.severity }}">{{ f.title }} <span class="muted">[{{ tr('tmpl.points', points=f.points) }}]</span></span>
+          <span class="flag-ev">{{ f.evidence }}</span>
+          <span class="flag-rec">→ {{ f.recommendation }}</span>
+        </div>
+        {% else %}<span class="muted">{{ tr('tmpl.apps.flags_none') }}</span>{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted">{{ tr('tmpl.apps.empty') }}</p>
+  {% endfor %}
+</section>
+
+</div>

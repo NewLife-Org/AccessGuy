@@ -17,8 +17,12 @@ from .predicates import ScoringContext
 def group_role_assignable_priv(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.has_privileged_role:
         names = ", ".join(r.role_name for r in grp.assigned_roles if r.is_privileged)
-        who = f"{grp.member_count} członków" if grp.member_count is not None else "członkowie"
-        return f"Grupa nadaje role uprzywilejowane: {names}. {who} dziedziczy ten dostęp."
+        who = (
+            ctx.t("evidence.GROUP_ROLE_ASSIGNABLE_PRIV.who_count", count=grp.member_count)
+            if grp.member_count is not None
+            else ctx.t("evidence.GROUP_ROLE_ASSIGNABLE_PRIV.who_generic")
+        )
+        return ctx.t("evidence.GROUP_ROLE_ASSIGNABLE_PRIV", roles=names, who=who)
     return None
 
 
@@ -27,8 +31,8 @@ def group_role_assignable(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.is_assignable_to_role and not grp.has_privileged_role:
         if grp.assigned_roles:
             names = ", ".join(r.role_name for r in grp.assigned_roles)
-            return f"Grupa role-assignable z przypisanymi rolami: {names}."
-        return "Grupa oznaczona jako role-assignable (może otrzymać role katalogowe)."
+            return ctx.t("evidence.GROUP_ROLE_ASSIGNABLE.with_roles", roles=names)
+        return ctx.t("evidence.GROUP_ROLE_ASSIGNABLE.flagged")
     return None
 
 
@@ -38,15 +42,15 @@ def group_ownerless(grp: Group, ctx: ScoringContext) -> str | None:
         return None
     count = grp.owner_count if grp.owner_count is not None else len(grp.owners)
     if count == 0:
-        return "Brak właściciela — grupa nie jest atestowana ani zarządzana."
+        return ctx.t("evidence.GROUP_OWNERLESS")
     return None
 
 
 def group_dynamic_membership(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.membership_type == "dynamic":
-        rule = grp.membership_rule or "(reguła nieznana)"
+        rule = grp.membership_rule or ctx.t("evidence.GROUP_DYNAMIC_MEMBERSHIP.rule_unknown")
         snippet = rule if len(rule) <= 120 else rule[:117] + "..."
-        return f"Członkostwo dynamiczne wg reguły: {snippet}"
+        return ctx.t("evidence.GROUP_DYNAMIC_MEMBERSHIP", rule=snippet)
     return None
 
 
@@ -54,46 +58,46 @@ def group_guests_with_access(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.guest_count and grp.guest_count > 0 and grp.grants_access:
         what = []
         if grp.assigned_roles:
-            what.append("role")
+            what.append(ctx.t("evidence.GROUP_GUESTS_WITH_ACCESS.roles"))
         if grp.assigned_licenses:
-            what.append("licencje")
+            what.append(ctx.t("evidence.GROUP_GUESTS_WITH_ACCESS.licenses"))
         if grp.security_enabled:
-            what.append("dostęp (security)")
-        return f"{grp.guest_count} gość(i) w grupie nadającej {', '.join(what)}."
+            what.append(ctx.t("evidence.GROUP_GUESTS_WITH_ACCESS.security"))
+        return ctx.t("evidence.GROUP_GUESTS_WITH_ACCESS", count=grp.guest_count, what=", ".join(what))
     return None
 
 
 def group_public_m365(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.group_kind == "microsoft365" and grp.visibility == "Public":
-        return "Grupa Microsoft 365 'Public' — każdy w organizacji może dołączyć i czytać zawartość."
+        return ctx.t("evidence.GROUP_PUBLIC_M365")
     return None
 
 
 def group_onprem_role(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.on_premises_sync_enabled and grp.assigned_roles:
         names = ", ".join(r.role_name for r in grp.assigned_roles)
-        return f"Grupa z on-prem nadaje role w chmurze: {names} (eskalacja on-prem → Entra)."
+        return ctx.t("evidence.GROUP_ONPREM_ROLE", roles=names)
     return None
 
 
 def group_license_no_members(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.assigned_licenses and grp.member_count == 0:
         lic = ", ".join(grp.assigned_licenses)
-        return f"Grupa przypisuje licencje ({lic}), ale nie ma członków."
+        return ctx.t("evidence.GROUP_LICENSE_NO_MEMBERS", licenses=lic)
     return None
 
 
 def group_empty(grp: Group, ctx: ScoringContext) -> str | None:
     # Tylko gdy znamy liczność (best-effort) i grupa nic nie nadaje przez licencje.
     if grp.member_count == 0 and not grp.assigned_licenses and grp.group_kind in ("security", "microsoft365"):
-        return "Grupa jest pusta (0 członków) — kandydat do usunięcia (higiena katalogu)."
+        return ctx.t("evidence.GROUP_EMPTY")
     return None
 
 
 def group_large_privileged(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.has_privileged_role and grp.member_count is not None and grp.member_count >= ctx.th("largeGroupMembers"):
         roles = ", ".join(r.role_name for r in grp.assigned_roles if r.is_privileged)
-        return f"Grupa nadaje role uprzywilejowane ({roles}) i ma {grp.member_count} członków — duży promień rażenia."
+        return ctx.t("evidence.GROUP_LARGE_PRIVILEGED", roles=roles, count=grp.member_count)
     return None
 
 
@@ -101,10 +105,10 @@ def group_dynamic_privileged(grp: Group, ctx: ScoringContext) -> str | None:
     if grp.membership_type == "dynamic" and (grp.assigned_roles or grp.assigned_licenses):
         what = []
         if grp.assigned_roles:
-            what.append("role")
+            what.append(ctx.t("evidence.GROUP_DYNAMIC_PRIVILEGED.roles"))
         if grp.assigned_licenses:
-            what.append("licencje")
-        return f"Reguła dynamiczna automatycznie nadaje {', '.join(what)} — atrybut konta decyduje o dostępie."
+            what.append(ctx.t("evidence.GROUP_DYNAMIC_PRIVILEGED.licenses"))
+        return ctx.t("evidence.GROUP_DYNAMIC_PRIVILEGED", what=", ".join(what))
     return None
 
 
@@ -112,7 +116,7 @@ def group_nested(grp: Group, ctx: ScoringContext) -> str | None:
     nested = [m for m in grp.members if m.type == "group"]
     if nested:
         names = ", ".join(m.display_name for m in nested[:5])
-        return f"Grupa zawiera {len(nested)} pod-grup(y): {names} — dziedziczenie utrudnia audyt dostępu."
+        return ctx.t("evidence.GROUP_NESTED", count=len(nested), names=names)
     return None
 
 
@@ -129,13 +133,13 @@ def group_priv_weak_members(grp: Group, ctx: ScoringContext) -> str | None:
         acc = ctx.index.accounts_by_id.get(m.id)
         if acc is None:
             continue
-        reasons = account_weaknesses(acc)
+        reasons = account_weaknesses(acc, ctx.t)
         if reasons:
-            weak.append(f"{acc.user_principal_name} ({', '.join(reasons)})")
+            weak.append(ctx.t("evidence.GROUP_PRIV_WEAK_MEMBERS.hit", upn=acc.user_principal_name, reasons=", ".join(reasons)))
     if not weak:
         return None
-    shown = "; ".join(weak[:5]) + (f" … (+{len(weak) - 5})" if len(weak) > 5 else "")
-    return f"{len(weak)} słabo chronionych członków dziedziczy rolę uprzywilejowaną: {shown}"
+    shown = "; ".join(weak[:5]) + (ctx.t("evidence.GROUP_PRIV_WEAK_MEMBERS.more", count=len(weak) - 5) if len(weak) > 5 else "")
+    return ctx.t("evidence.GROUP_PRIV_WEAK_MEMBERS", count=len(weak), shown=shown)
 
 
 GROUP_PREDICATES = {

@@ -10,6 +10,7 @@ from accessguy_processor.report.community import (
 from accessguy_processor.report.html import (
     render_apps_html,
     render_groups_html,
+    render_report_html,
     render_summary_html,
 )
 from accessguy_processor.rules import load_rubric
@@ -67,7 +68,9 @@ def test_high_risk_app_is_critical(sample_dataset_path):
     a = _app(ds, "Backup Service")
     codes = {f.code for f in a.flags}
     assert "APP_HIGH_RISK_PERM" in codes
-    assert "APP_NO_OWNER" in codes
+    assert "APP_ORPHANED" in codes              # porzucona: brak ownera + userów + żywy sekret
+    assert "APP_NO_OWNER" not in codes          # #2: APP_ORPHANED przejmuje — brak podwójnego punktu
+    assert "APP_SECRET_OVER_CERT" in codes      # #5a: uprzywilejowana, aktywny sekret, brak certu
     assert "APP_SECRET_EXPIRED" in codes
     assert "APP_UNVERIFIED_PRIVILEGED" in codes
     assert a.severity == "critical"
@@ -89,7 +92,7 @@ def test_app_long_lived_secret(sample_dataset_path):
     a = _app(ds, "Legacy Sync")
     codes = {f.code for f in a.flags}
     assert "APP_LONG_LIVED_SECRET" in codes
-    assert "APP_SECRET_OVER_CERT" in codes
+    assert "APP_SECRET_OVER_CERT" not in codes  # #5a: brak uprawnień app-only high-risk → mniej szumu
 
 
 def test_views_and_overview_build(sample_dataset_path):
@@ -125,7 +128,8 @@ def test_app_assigned_group_expands_members(sample_dataset_path, tmp_path):
     ds = _scored(sample_dataset_path)
     html = render_apps_html(ds, tmp_path / "a.html").read_text(encoding="utf-8")
     # Reporting Connector ma przypisaną grupę Helpdesk Operators -> w raporcie widać jej członków
-    assert "Grupy przypisane do aplikacji" in html
+    # (raport domyślnie po angielsku)
+    assert "Groups assigned to the application" in html
     assert "Helpdesk Operators" in html
     assert "anna.nowak@contoso.pl" in html  # konkretny członek przypisanej grupy
 
@@ -156,12 +160,45 @@ def test_html_renders_for_all_modules(sample_dataset_path, tmp_path):
     s = render_summary_html(ds, tmp_path / "Contoso_2026-06-01_summary.html")
     groups_html = g.read_text(encoding="utf-8")
     assert "Helpdesk Operators" in groups_html
-    assert "Członkowie" in groups_html  # rozwijana lista członków
+    assert "Members" in groups_html  # rozwijana lista członków (EN domyślnie)
     assert "anna.nowak@contoso.pl" in groups_html  # konkretna osoba w grupie
     apps_html = a.read_text(encoding="utf-8")
     assert "Backup Service" in apps_html
-    assert "Podpięci użytkownicy" in apps_html
+    assert "Linked users" in apps_html
     summary = s.read_text(encoding="utf-8")
-    assert "postawa łączna" in summary
+    assert "overall posture" in summary  # EN domyślnie
     assert "Contoso_2026-06-01_groups.html" in summary  # link do raportu szczegółowego
     assert "sevbar" in summary  # pasek rozkładu severity
+
+
+def test_combined_report_has_summary_and_tabs(sample_dataset_path, tmp_path):
+    ds = _scored(sample_dataset_path)
+    html = render_report_html(ds, tmp_path / "Contoso_2026-06-01.html").read_text(encoding="utf-8")
+    # 4 zakładki jak arkusze Excela (Konta/Grupy/Aplikacje/Conditional Access).
+    assert 'data-tabpanel="users"' in html
+    assert 'data-tabpanel="groups"' in html
+    assert 'data-tabpanel="apps"' in html
+    assert 'data-tabpanel="ca"' in html  # nowa zakładka Conditional Access
+    assert 'data-tab="ca"' in html
+    # Ocena postawy tenanta na górze, strefa summary na samym dole.
+    assert "overall posture" in html
+    assert 'class="ag-summaryzone"' in html
+    grade = html.index('class="ag-exec"')
+    tabs = html.index('class="ag-tabs"')
+    zone = html.index('class="ag-summaryzone"')
+    assert grade < tabs < zone  # ocena -> zakładki -> summary (dół)
+    # Dane wszystkich modułów + CA w jednym pliku.
+    assert "Helpdesk Operators" in html
+    assert "Backup Service" in html
+    assert "anna.nowak@contoso.pl" in html
+    assert "_groups.html" not in html  # głębokie linki in-page, bez osobnych plików
+    assert "sevbar" in html
+    # Interaktywne kafelki (klik = filtr) + facety na kartach.
+    assert "ag-card-btn" in html
+    assert 'data-filter-sev="critical"' in html
+    assert "data-facet=" in html
+    # Zakładka CA: rozwijane karty polityk (kto podlega / co robią) + interaktywne kafelki.
+    assert "ca-pol" in html
+    assert "data-cafilter" in html
+    # Ocena postawy obok logo w nagłówku (split header).
+    assert "ag-header-split" in html

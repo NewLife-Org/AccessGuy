@@ -14,29 +14,38 @@ Sygnał ataku        = aktywność w logach sign-in wskazująca trwający atak/n
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from ..models import Account, Dataset, Group
+from ..models import Account, CaPolicy, Dataset, Group
+
+if TYPE_CHECKING:
+    from ..i18n import Translator
 
 
-def account_weaknesses(acc: Account) -> list[str]:
+def account_weaknesses(acc: Account, t: "Translator | None" = None) -> list[str]:
     """Dlaczego to konto jest łatwe do przejęcia / być może już przejęte. Pusta lista = OK."""
+    from ..i18n import Translator
+
+    tr = (t or Translator()).t
     w: list[str] = []
     if acc.mfa_registered is False:
-        w.append("brak MFA")
+        w.append(tr("weakness.no_mfa"))
     if acc.activity:
         if acc.activity.legacy_success_count:
-            w.append(f"udane legacy auth ({acc.activity.legacy_success_count})")
+            w.append(tr("weakness.legacy_success", count=acc.activity.legacy_success_count))
         if acc.activity.risky_sign_in_count:
-            w.append(f"{acc.activity.risky_sign_in_count} ryzykownych logowań")
+            w.append(tr("weakness.risky_signins", count=acc.activity.risky_sign_in_count))
     if acc.risky_user is not None:
         w.append(
-            f"Identity Protection: {acc.risky_user.risk_state} "
-            f"(poziom {acc.risky_user.risk_level})"
+            tr("weakness.identity_protection",
+               state=acc.risky_user.risk_state, level=acc.risky_user.risk_level)
         )
     return w
 
 
-def attack_signals(acc: Account, failed_warn: int) -> tuple[list[str], list[str]]:
+def attack_signals(
+    acc: Account, failed_warn: int, t: "Translator | None" = None
+) -> tuple[list[str], list[str]]:
     """Sygnały z logów, że konto jest atakowane/nadużywane — rozdzielone na klasy dowodu.
 
     TWARDE = uwierzytelnienie faktycznie ZASZŁO w podejrzany sposób albo Microsoft
@@ -45,39 +54,36 @@ def attack_signals(acc: Account, failed_warn: int) -> tuple[list[str], list[str]
     wygasłe hasło w starym kliencie, nie atak). Reguły krytyczne (PRIV_COMPROMISE_SIGNALS)
     odpalają się WYŁĄCZNIE na twardych — miękkie idą do evidence jako kontekst.
     Zwraca (twarde, miękkie)."""
+    from ..i18n import Translator
+
+    tr = (t or Translator()).t
     hard: list[str] = []
     soft: list[str] = []
     if acc.activity:
         a = acc.activity
         if a.risky_sign_in_count:
-            hard.append(
-                f"{a.risky_sign_in_count} logowań oznaczonych jako ryzykowne przez Identity "
-                f"Protection w oknie {a.window_days} dni"
-            )
+            hard.append(tr("attack.risky", count=a.risky_sign_in_count, window=a.window_days))
         if a.legacy_success_count:
             protos = ", ".join(
-                f"{c.client_app} ({c.success_count}x)"
+                tr("attack.legacy_proto_part", client=c.client_app, count=c.success_count)
                 for c in a.legacy_auth_clients
                 if c.success_count
             )
             hard.append(
-                f"{a.legacy_success_count} UDANYCH logowań legacy auth (ominięcie MFA)"
-                + (f" — protokoły: {protos}" if protos else "")
+                tr("attack.legacy_success", count=a.legacy_success_count)
+                + (tr("attack.legacy_protocols", protos=protos) if protos else "")
             )
         if a.failed_sign_in_count >= failed_warn:
-            soft.append(
-                f"{a.failed_sign_in_count} nieudanych logowań w {a.window_days} dni "
-                "(może być atak, ale równie dobrze wygasłe hasło w starym kliencie)"
-            )
+            soft.append(tr("attack.failed_soft", count=a.failed_sign_in_count, window=a.window_days))
     if acc.risky_user is not None:
         when = (
             acc.risky_user.risk_last_updated_date_time.date().isoformat()
             if acc.risky_user.risk_last_updated_date_time
-            else "?"
+            else tr("attack.date_unknown")
         )
         hard.append(
-            f"konto oznaczone '{acc.risky_user.risk_state}' przez Identity Protection "
-            f"(poziom {acc.risky_user.risk_level}, stan z {when}) — alert NIEOBSŁUŻONY"
+            tr("attack.risky_user",
+               state=acc.risky_user.risk_state, level=acc.risky_user.risk_level, when=when)
         )
     return hard, soft
 
@@ -102,7 +108,10 @@ class CorrelationIndex:
     collectors_run: frozenset[str] = field(default_factory=frozenset)
 
     @classmethod
-    def build(cls, dataset: Dataset) -> CorrelationIndex:
+    def build(cls, dataset: Dataset, t: "Translator | None" = None) -> CorrelationIndex:
+        from ..i18n import Translator
+
+        tr = (t or Translator()).t
         idx = cls()
         idx.collectors_run = frozenset(dataset.scan_context.collectors_run)
         for a in dataset.accounts:
@@ -116,28 +125,69 @@ class CorrelationIndex:
                 for m in g.members:
                     if m.type == "user" and m.id:
                         idx.priv_groups_of_user.setdefault(m.id, []).append(g)
-        # Wykluczenia z MFA: tylko polityki WŁĄCZONE i wymagające MFA. Wykluczenia przez
-        # grupę rozwiązujemy po members (lista bywa przycięta do MemberCap — best effort).
-        for p in dataset.ca_policies:
-            if not (p.enabled and p.requires_mfa):
-                continue
+        # Wykluczenia z MFA: tylko polityki WŁĄCZONE i wymagające MFA. Liczymy wykluczenie jako
+        # realną LUKĘ tylko, gdy: (a) polityka faktycznie OBEJMOWAŁABY konto (zakres include),
+        # ORAZ (b) ŻADNA inna włączona polityka MFA i tak go nie wymusza. To zabija dwa
+        # false-positive: wykluczenie z polityki, która konta i tak nie dotyczy, oraz konto
+        # wciąż chronione przez inną politykę. Wykluczenia przez grupę rozwiązujemy po members
+        # (lista bywa przycięta do MemberCap — best effort).
+        mfa_pols = [p for p in dataset.ca_policies if p.enabled and p.requires_mfa]
+
+        def _covered_elsewhere(uid: str, excluding: CaPolicy) -> bool:
+            return any(
+                q is not excluding
+                and idx._policy_applies_to(q, uid)
+                and not idx._policy_excludes(q, uid)
+                for q in mfa_pols
+            )
+
+        for p in mfa_pols:
+            candidates: list[tuple[str, str]] = []  # (uid, lokalizowane evidence)
             for uid in p.exclude_users:
                 if uid in idx.accounts_by_id:
-                    idx.mfa_exclusions_of_user.setdefault(uid, []).append(
-                        f"polityka '{p.display_name}' (wykluczenie bezpośrednie)"
-                    )
+                    candidates.append((uid, tr("ca_exclusion.direct", policy=p.display_name)))
             for gid in p.exclude_groups:
                 xg = idx.groups_by_id.get(gid)
                 if xg is None:
                     continue
                 for m in xg.members:
-                    if m.type == "user" and m.id:
-                        idx.mfa_exclusions_of_user.setdefault(m.id, []).append(
-                            f"polityka '{p.display_name}' (przez grupę '{xg.display_name}')"
+                    if m.type == "user" and m.id and m.id in idx.accounts_by_id:
+                        candidates.append(
+                            (m.id, tr("ca_exclusion.via_group", policy=p.display_name, group=xg.display_name))
                         )
+            for uid, evidence in candidates:
+                if not idx._policy_applies_to(p, uid):
+                    continue  # wykluczenie z polityki, która i tak nie obejmuje konta = szum
+                if _covered_elsewhere(uid, p):
+                    continue  # inna włączona polityka MFA wciąż wymusza MFA na tym koncie
+                idx.mfa_exclusions_of_user.setdefault(uid, []).append(evidence)
         return idx
 
     def resolve_owner(self, owner: str) -> Account | None:
         """Owner ze skanera to UPN (preferowany) albo displayName — dopasuj do konta."""
         key = owner.strip().lower()
         return self.accounts_by_upn.get(key) or self.accounts_by_name.get(key)
+
+    def _policy_applies_to(self, p: CaPolicy, uid: str) -> bool:
+        """Czy konto MIEŚCI SIĘ w zakresie include polityki (pomijając wykluczenia)?
+        include-by-role traktujemy zachowawczo jako 'nie wiem' (False) — nie mamy mapy
+        rola→konto, a fałszywe 'objęte' byłoby gorsze niż pominięcie tej ścieżki."""
+        inc = p.include_users
+        if "All" in inc or uid in inc:
+            return True
+        acc = self.accounts_by_id.get(uid)
+        if "GuestsOrExternalUsers" in inc and acc is not None and acc.category in ("guest", "external"):
+            return True
+        return any(
+            (g := self.groups_by_id.get(gid)) is not None and any(m.id == uid for m in g.members)
+            for gid in p.include_groups
+        )
+
+    def _policy_excludes(self, p: CaPolicy, uid: str) -> bool:
+        """Czy konto jest wykluczone z polityki (wprost lub przez grupę z przyciętej listy members)?"""
+        if uid in p.exclude_users:
+            return True
+        return any(
+            (g := self.groups_by_id.get(gid)) is not None and any(m.id == uid for m in g.members)
+            for gid in p.exclude_groups
+        )

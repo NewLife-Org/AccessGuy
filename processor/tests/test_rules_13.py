@@ -12,6 +12,7 @@ from accessguy_processor.models import (
     Activity,
     Application,
     AppPermissionGrant,
+    CaPolicy,
     CredentialEvent,
     Dataset,
     RiskyUser,
@@ -19,7 +20,7 @@ from accessguy_processor.models import (
     ScanContext,
     Tenant,
 )
-from accessguy_processor.report.community import build_posture
+from accessguy_processor.report.community import build_apps_view, build_posture
 from accessguy_processor.rules import load_rubric
 from accessguy_processor.scoring import score_dataset
 
@@ -27,9 +28,9 @@ NOW = datetime(2026, 6, 1, tzinfo=timezone.utc)
 RUBRIC = load_rubric()
 
 
-def _ds(accounts=None, applications=None, collectors=None) -> Dataset:
+def _ds(accounts=None, applications=None, collectors=None, ca_policies=None) -> Dataset:
     return Dataset(
-        schema_version="1.3",
+        schema_version="1.4",
         generated_at=NOW,
         tenant=Tenant(id="t", display_name="Test", verified_domains=["contoso.pl"]),
         scan_context=ScanContext(
@@ -38,6 +39,7 @@ def _ds(accounts=None, applications=None, collectors=None) -> Dataset:
         ),
         accounts=accounts or [],
         applications=applications or [],
+        ca_policies=ca_policies or [],
     )
 
 
@@ -80,10 +82,10 @@ def test_priv_compromise_fired_on_hard_signal_with_concrete_evidence():
     )
     ds = score_dataset(_ds(accounts=[acc]), RUBRIC)
     flag = next(f for f in ds.accounts[0].flags if f.code == "PRIV_COMPROMISE_SIGNALS")
-    assert "2 logowań oznaczonych jako ryzykowne" in flag.evidence
+    assert "2 sign-ins flagged risky" in flag.evidence
     assert "Global Administrator" in flag.evidence
     assert "Sign-in logs" in flag.evidence          # wskazówka weryfikacji
-    assert "Kontekst dodatkowy" in flag.evidence    # failed sign-ins jako kontekst, nie powód
+    assert "Additional context" in flag.evidence    # failed sign-ins jako kontekst, nie powód
 
 
 def test_priv_compromise_fired_on_risky_user_state():
@@ -113,7 +115,7 @@ def test_ca_mfa_excluded_on_sample(sample_dataset_path):
     guest = next(a for a in ds.accounts if a.user_principal_name == "admin.ext@partner.com")
     flag = next(f for f in guest.flags if f.code == "CA_MFA_EXCLUDED")
     assert "Require MFA for all users" in flag.evidence
-    assert "uprzywilejowan" in flag.evidence  # GA wykluczony z MFA -> dopisek
+    assert "privileged role" in flag.evidence  # GA wykluczony z MFA -> dopisek
     jan = next(a for a in ds.accounts if a.user_principal_name == "jan.kowalski@contoso.pl")
     assert "CA_MFA_EXCLUDED" not in _codes(jan)
 
@@ -185,3 +187,99 @@ def test_build_posture_none_for_old_datasets():
     """Dataset 1.2 bez kolektorów 1.3 → posture None (sekcja w summary znika)."""
     ds = _ds(accounts=[_acc()])
     assert build_posture(ds) is None
+
+
+# --- 1.4: zakres polityk CA (broad vs narrow) + anty-false-positive wykluczeń ---
+
+def _capol(**kw) -> CaPolicy:
+    base = dict(
+        id="p1", display_name="Policy", state="enabled", requires_mfa=True,
+        include_users=["All"], include_applications=["All"],
+    )
+    base.update(kw)
+    return CaPolicy(**base)
+
+
+def test_mfa_narrow_policy_is_high_not_critical():
+    """Polityka MFA celująca w JEDNĄ aplikację nie 'pokrywa tenanta' → high (mfa_narrow),
+    NIE critical (no_mfa_policy), i nie liczy się jako szeroka."""
+    pol = _capol(display_name="MFA for one app", include_applications=["app-123"])
+    posture = build_posture(_ds(ca_policies=[pol], collectors=["caPolicies"]))
+    assert posture is not None
+    assert posture["ca_mfa_policies"] == 1
+    assert posture["ca_mfa_broad"] == 0
+    assert "critical" not in {f["severity"] for f in posture["findings"]}
+    texts = " ".join(f["text"] for f in posture["findings"])
+    assert "narrowly scoped" in texts             # mfa_narrow
+    assert "enforces MFA on nobody" not in texts  # NIE no_mfa_policy
+
+
+def test_mfa_broad_policy_silent():
+    """Włączona polityka MFA dla WSZYSTKICH użytkowników i WSZYSTKICH aplikacji → brak findingu MFA."""
+    posture = build_posture(_ds(ca_policies=[_capol()], collectors=["caPolicies"]))
+    assert posture is not None
+    assert posture["ca_mfa_broad"] == 1
+    texts = " ".join(f["text"] for f in posture["findings"])
+    assert "narrowly scoped" not in texts
+    assert "enforces MFA on nobody" not in texts
+
+
+def test_backward_compat_no_apps_is_broad():
+    """Stary dataset bez includeApplications → polityka 'All users' traktowana jako szeroka
+    (zachowawczo), żeby nie generować fałszywego mfa_narrow."""
+    posture = build_posture(_ds(ca_policies=[_capol(include_applications=[])], collectors=["caPolicies"]))
+    assert posture is not None
+    assert posture["ca_mfa_broad"] == 1
+
+
+def test_ca_mfa_excluded_skips_out_of_scope():
+    """Wykluczenie z polityki, która i tak nie obejmuje konta (include = inna grupa) = szum, nie finding."""
+    acc = _acc(id="uX", user_principal_name="x@contoso.pl")
+    pol = _capol(include_users=[], include_groups=["g-spoza-datasetu"], exclude_users=["uX"])
+    ds = score_dataset(_ds(accounts=[acc], ca_policies=[pol], collectors=["users", "caPolicies"]), RUBRIC)
+    assert "CA_MFA_EXCLUDED" not in _codes(ds.accounts[0])
+
+
+def test_ca_mfa_excluded_skips_when_covered_by_other_policy():
+    """Konto wykluczone z polityki A, ale objęte włączoną polityką B (All, bez wykluczeń) →
+    realnie wciąż wymuszane MFA → NIE flagujemy."""
+    acc = _acc(id="uX", user_principal_name="x@contoso.pl")
+    pol_a = _capol(id="A", display_name="A", exclude_users=["uX"])
+    pol_b = _capol(id="B", display_name="B")  # All users, brak wykluczeń
+    ds = score_dataset(_ds(accounts=[acc], ca_policies=[pol_a, pol_b], collectors=["users", "caPolicies"]), RUBRIC)
+    assert "CA_MFA_EXCLUDED" not in _codes(ds.accounts[0])
+
+
+def test_ca_mfa_excluded_fires_when_only_policy():
+    """Konto wykluczone z JEDYNEJ szerokiej polityki MFA → realna luka → finding."""
+    acc = _acc(id="uX", user_principal_name="x@contoso.pl")
+    ds = score_dataset(
+        _ds(accounts=[acc], ca_policies=[_capol(exclude_users=["uX"])], collectors=["users", "caPolicies"]),
+        RUBRIC,
+    )
+    assert "CA_MFA_EXCLUDED" in _codes(ds.accounts[0])
+
+
+# --- app-only vs delegowane high-risk (#1) -----------------------------------
+
+def test_delegated_high_risk_not_treated_as_app_only():
+    """Uprawnienie DELEGOWANE high-risk (wymaga zalogowanego usera) NIE czyni aplikacji
+    'app-only privileged': nie odpala APP_DORMANT_PRIVILEGED i nie liczy się do oceny ryzyka
+    aplikacji. App-only high-risk — przeciwnie — owszem."""
+    deleg = Application(
+        id="a1", display_name="DelegatedOnly",
+        last_sign_in_date_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        permissions=[AppPermissionGrant(permission="Mail.ReadWrite", grant_type="delegated", is_high_risk=True)],
+    )
+    ds = score_dataset(_ds(applications=[deleg], collectors=["apps", "spSignIns"]), RUBRIC)
+    assert "APP_DORMANT_PRIVILEGED" not in _codes(ds.applications[0])
+    assert build_apps_view(ds)["high_risk_count"] == 0
+
+    apponly = Application(
+        id="a2", display_name="AppOnly",
+        last_sign_in_date_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        permissions=[AppPermissionGrant(permission="Mail.ReadWrite", grant_type="application", is_high_risk=True)],
+    )
+    ds2 = score_dataset(_ds(applications=[apponly], collectors=["apps", "spSignIns"]), RUBRIC)
+    assert "APP_DORMANT_PRIVILEGED" in _codes(ds2.applications[0])
+    assert build_apps_view(ds2)["high_risk_count"] == 1

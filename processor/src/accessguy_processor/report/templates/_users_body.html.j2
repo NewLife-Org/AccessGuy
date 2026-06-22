@@ -1,0 +1,190 @@
+{# Ciało modułu KONTA — współdzielone przez standalone (report.html.j2) i raport połączony (index.html.j2).
+   Wymaga w kontekście: dataset, community, cats, sevs oraz makra `sevbar`.
+   Kafelki są INTERAKTYWNE (data-filter-*) — klik filtruje rozpiskę poniżej (obsługa w _filterbar). #}
+<div class="ag-module" data-module="users">
+
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ community.grade }}">
+    <span class="ag-grade-letter">{{ community.grade }}</span>
+    <span class="ag-grade-lbl">{{ tr('tmpl.users.grade_lbl') }}</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>{{ tr('tmpl.users.exec_h2') }}</h2>
+    <p class="ag-exec-note">{{ community.grade_note }}
+      {{ tr('tmpl.users.mfa_coverage') }} <strong>{{ community.mfa_coverage if community.mfa_coverage is not none else '—' }}%</strong> ·
+      Global Admin: <strong>{{ community.global_admin_count }}</strong> ·
+      {{ tr('tmpl.users.priv_no_mfa') }} <strong class="{{ 'warnv' if community.priv_no_mfa_count }}">{{ community.priv_no_mfa_count }}</strong> ·
+      {{ tr('tmpl.users.legacy_label') }} <strong class="{{ 'critv' if community.legacy_success_count }}">{{ community.legacy_success_count }}</strong> / <strong class="{{ 'warnv' if community.legacy_auth_count }}">{{ community.legacy_auth_count }}</strong> {{ tr('tmpl.users.accounts_suffix') }} ·
+      {{ tr('tmpl.users.risky') }} <strong class="{{ 'critv' if community.risky_count }}">{{ community.risky_count }}</strong>
+    </p>
+    {% if community.top_findings %}
+    <ul class="ag-top">
+      {% for t in community.top_findings %}
+      <li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <strong>{{ t.upn }}</strong> — {{ t.headline }} <span class="muted">({{ tr('tmpl.points', points=t.score) }})</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">{{ tr('tmpl.users.no_high_risk') }}</p>{% endif %}
+  </div>
+</section>
+
+{# Pasek rozkładu severity — zaraz po podsumowaniu, NAD kafelkami. #}
+<section class="ag-distrib">{{ sevbar(tr('community.module.users'), dataset.accounts | length, sevs) }}</section>
+
+<section class="ag-summary">
+  <button type="button" class="ag-card ag-card-btn" data-filter-facet="internal"><span class="ag-num">{{ cats['internal'] }}</span><span class="ag-lbl">Internal</span></button>
+  <button type="button" class="ag-card ag-card-btn" data-filter-facet="external"><span class="ag-num">{{ cats['external'] }}</span><span class="ag-lbl">External</span></button>
+  <button type="button" class="ag-card ag-card-btn" data-filter-facet="guest"><span class="ag-num">{{ cats['guest'] }}</span><span class="ag-lbl">Guest</span></button>
+  <button type="button" class="ag-card ag-card-btn crit" data-filter-sev="critical"><span class="ag-num">{{ sevs['critical'] }}</span><span class="ag-lbl">Critical</span></button>
+  <button type="button" class="ag-card ag-card-btn high" data-filter-sev="high"><span class="ag-num">{{ sevs['high'] }}</span><span class="ag-lbl">High</span></button>
+  <button type="button" class="ag-card ag-card-btn med" data-filter-sev="medium"><span class="ag-num">{{ sevs['medium'] }}</span><span class="ag-lbl">Medium</span></button>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.users.tenant_char_h2') }}</h2>
+  <div class="ag-summary">
+    <button type="button" class="ag-card ag-card-btn" data-filter-clear><span class="ag-num">{{ community.account_total }}</span><span class="ag-lbl">{{ tr('tmpl.meta.accounts') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn" data-filter-facet="active"><span class="ag-num" style="color:var(--good)">{{ community.active_count }}</span><span class="ag-lbl">{{ tr('tmpl.users.card.active') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn" data-filter-facet="inactive"><span class="ag-num" style="color:var(--muted)">{{ community.inactive_count }}</span><span class="ag-lbl">{{ tr('tmpl.users.card.inactive') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn" data-filter-facet="guest"><span class="ag-num">{{ community.guest_count }}</span><span class="ag-lbl">{{ tr('tmpl.users.card.guests') }}</span></button>
+    <button type="button" class="ag-card ag-card-btn high" data-filter-facet="ga"><span class="ag-num">{{ community.global_admin_count }}</span><span class="ag-lbl">Global Admin</span></button>
+    <button type="button" class="ag-card ag-card-btn crit" data-filter-facet="nomfa"><span class="ag-num">{{ community.no_mfa_count }}</span><span class="ag-lbl">{{ tr('tmpl.users.card.no_mfa') }}</span></button>
+    <div class="ag-card"><span class="ag-num">{{ community.mfa_coverage if community.mfa_coverage is not none else '—' }}%</span><span class="ag-lbl">{{ tr('tmpl.users.card.mfa_coverage') }}</span></div>
+    <button type="button" class="ag-card ag-card-btn {{ 'crit' if community.legacy_success_count else ('med' if community.legacy_auth_count) }}" data-filter-facet="legacy"><span class="ag-num">{{ community.legacy_success_count }}<span class="muted" style="font-size:16px"> / {{ community.legacy_auth_count }}</span></span><span class="ag-lbl">{{ tr('tmpl.users.card.legacy') }}</span></button>
+    <div class="ag-card"><span class="ag-num">{{ community.subscribed_skus | length }}</span><span class="ag-lbl">{{ tr('tmpl.users.card.licenses') }}</span></div>
+  </div>
+
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.users.lic_h3') }}</h3>
+      {% if community.subscribed_skus %}
+      <table class="ag-table mini">
+        <thead><tr><th>{{ tr('tmpl.users.lic_col_license') }}</th><th class="num" title="{{ tr('tmpl.users.lic_assigned_full') }}">{{ tr('tmpl.users.lic_assigned_short') }}</th><th class="num" title="{{ tr('tmpl.users.lic_prepaid_full') }}">{{ tr('tmpl.users.lic_prepaid_short') }}</th></tr></thead>
+        <tbody>
+          {% for s in community.subscribed_skus %}
+          <tr><td>{{ s.name }} <span class="muted">({{ s.part }})</span></td><td class="num">{{ s.consumed }}</td><td class="num">{{ s.prepaid }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">{{ tr('tmpl.users.lic_none') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.users.recent_h3') }}</h3>
+      <table class="ag-table mini">
+        <thead><tr><th>UPN</th><th class="date">{{ tr('tmpl.users.col_created') }}</th></tr></thead>
+        <tbody>
+          {% for r in community.recent_accounts %}
+          <tr><td>{{ r.upn }}</td><td class="date muted">{{ r.created.strftime('%Y-%m-%d') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.users.ga_h3') }}</h3>
+      {% if community.global_admins %}
+      <ul class="ag-list">{% for ga in community.global_admins %}<li>{{ ga }}</li>{% endfor %}</ul>
+      {% else %}<span class="muted">{{ tr('tmpl.users.ga_none') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.users.nomfa_h3') }} <span class="muted">({{ community.no_mfa_count }})</span></h3>
+      {% if community.no_mfa_emails %}
+      <details><summary>{{ tr('tmpl.users.nomfa_show', count=community.no_mfa_count) }}</summary>
+        <ul class="ag-list cols">{% for m in community.no_mfa_emails %}<li>{{ m }}</li>{% endfor %}</ul>
+      </details>
+      {% else %}<span class="muted">{{ tr('tmpl.users.nomfa_all_ok') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box" style="grid-column:1/-1">
+      <h3>{{ tr('tmpl.users.legacy_h3') }} <span class="muted">{{ tr('tmpl.users.legacy_h3_note') }}</span></h3>
+      {% if community.legacy_breakdown %}
+      <table class="ag-table mini">
+        <thead><tr><th>{{ tr('tmpl.users.legacy_col_proto') }}</th><th>{{ tr('tmpl.users.legacy_col_success') }}</th><th>{{ tr('tmpl.users.legacy_col_attempts') }}</th><th>{{ tr('tmpl.users.legacy_col_accounts') }}</th><th>{{ tr('tmpl.users.legacy_col_what') }}</th></tr></thead>
+        <tbody>
+          {% for l in community.legacy_breakdown %}
+          <tr>
+            <td><strong>{{ l.client }}</strong></td>
+            <td class="num {{ 'legacy-yes' if l.success else 'legacy-no' }}">{{ l.success }}</td>
+            <td class="num">{{ l.count }}</td>
+            <td class="num">{{ l.accounts }}</td>
+            <td class="muted">{{ l.info }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted" style="margin-top:8px">{{ tr('tmpl.users.legacy_hint') }}</p>
+      {% else %}<span class="muted">{{ tr('tmpl.users.legacy_none') }}</span>{% endif %}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.users.accounts_h2') }} <span class="muted">{{ tr('tmpl.users.accounts_h2_note') }}</span></h2>
+  {% include '_filterbar.html.j2' %}
+  {% for a in dataset.accounts %}
+  {% set is_ga = a.roles and (a.roles | selectattr('role_name', 'equalto', 'Global Administrator') | list) %}
+  <details class="acct sev-{{ a.severity }}" id="obj-{{ a.id }}"
+    data-facet="{{ a.category }} {{ 'active' if a.account_enabled else 'inactive' }}{% if a.mfa_registered is false %} nomfa{% endif %}{% if is_ga %} ga{% endif %}{% if a.activity and a.activity.legacy_success_count %} legacy{% endif %}{% if a.risky_user %} risky{% endif %}">
+    <summary>
+      <span class="badge {{ a.severity }}">{{ a.severity }}</span>
+      <span class="acct-score">{{ a.review_score }}</span>
+      <span class="acct-upn">{{ a.user_principal_name }}</span>
+      <span class="acct-tag">{{ a.category }}</span>
+      <span class="acct-tag">{{ 'enabled' if a.account_enabled else 'disabled' }}</span>
+      <span class="acct-sig muted">
+        {%- if a.flags %}{{ a.flags[:2] | map(attribute='title') | join('; ') }}{% if a.flags|length > 2 %} (+{{ a.flags|length - 2 }}){% endif %}{% else %}{{ tr('tmpl.users.no_signals') }}{% endif -%}
+      </span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">{{ tr('tmpl.fact.name') }}</span><span class="v">{{ a.display_name }}</span></div>
+        <div><span class="k">Manager</span><span class="v">{{ a.manager or '—' }}</span></div>
+        <div><span class="k">{{ tr('tmpl.fact.last_signin') }}</span><span class="v">{{ a.last_sign_in_date_time.strftime('%Y-%m-%d %H:%M') if a.last_sign_in_date_time else '—' }}</span></div>
+        <div><span class="k">{{ tr('tmpl.fact.pw_change') }}</span><span class="v">{{ a.last_password_change_date_time.strftime('%Y-%m-%d') if a.last_password_change_date_time else '—' }}</span></div>
+        <div><span class="k">MFA</span><span class="v">{% if a.mfa_registered is none %}—{% elif a.mfa_registered %}{{ tr('tmpl.val.yes') }}{% else %}{{ tr('tmpl.val.no') }}{% endif %}</span></div>
+        <div><span class="k">{{ tr('tmpl.fact.licenses') }}</span><span class="v">{% if a.assigned_licenses %}{% for l in a.assigned_licenses %}{{ friendly_sku(l) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</span></div>
+        {% if a.risky_user %}
+        <div><span class="k">Identity Protection</span><span class="v critv">{{ a.risky_user.risk_state }} ({{ tr('tmpl.fact.level') }} {{ a.risky_user.risk_level }}{% if a.risky_user.risk_last_updated_date_time %}, {{ a.risky_user.risk_last_updated_date_time.strftime('%Y-%m-%d') }}{% endif %})</span></div>
+        {% endif %}
+      </div>
+
+      {% if a.activity %}
+      <div class="acct-activity">
+        <strong>{{ tr('tmpl.users.activity_label', days=a.activity.window_days) }}</strong>
+        {{ tr('tmpl.users.act_signins') }} {{ a.activity.sign_in_count }} ·
+        {{ tr('tmpl.users.act_failed') }} {{ a.activity.failed_sign_in_count }} ·
+        <span class="{{ 'warnv' if a.activity.night_sign_in_count else '' }}">{{ tr('tmpl.users.act_night') }} {{ a.activity.night_sign_in_count }}</span> ·
+        <span class="{{ 'critv' if a.activity.risky_sign_in_count else '' }}">{{ tr('tmpl.users.act_risky') }} {{ a.activity.risky_sign_in_count }}</span> ·
+        <span class="{{ 'critv' if a.activity.legacy_success_count else ('warnv' if a.activity.legacy_auth_count else '') }}">{{ tr('tmpl.users.act_legacy', success=a.activity.legacy_success_count, count=a.activity.legacy_auth_count) }}</span>
+        {% if a.activity.last_sign_in_app %}· {{ tr('tmpl.users.act_last') }} <em>{{ a.activity.last_sign_in_app }}</em>{% endif %}
+        {% if a.activity.legacy_auth_clients %}
+        <div class="muted">{{ tr('tmpl.users.act_legacy_proto') }} {% for c in a.activity.legacy_auth_clients %}<span class="{{ 'legacy-yes' if c.success_count else 'legacy-no' }}">{{ c.client_app }} ({{ c.success_count }}/{{ c.count }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% endif %}
+        {% if a.activity.top_applications %}
+        <div class="muted">{{ tr('tmpl.users.act_top') }} {% for t in a.activity.top_applications %}{{ t.app_display_name }} ({{ t.count }}){% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if a.roles %}
+      <div class="acct-roles"><strong>{{ tr('tmpl.users.roles_label') }}</strong>
+        {% for r in a.roles %}<span class="role {{ 'priv' if r.is_privileged }}">{{ r.role_name }} <span class="muted">({{ r.assignment_type }})</span></span>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="acct-flags">
+        {% for f in a.flags %}
+        <div class="flag">
+          <span class="flag-title {{ f.severity }}">{{ f.title }} <span class="muted">[{{ tr('tmpl.points', points=f.points) }}]</span></span>
+          <span class="flag-ev">{{ f.evidence }}</span>
+          <span class="flag-rec">→ {{ f.recommendation }}</span>
+        </div>
+        {% else %}<span class="muted">{{ tr('tmpl.users.flags_none') }}</span>{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+</section>
+
+</div>

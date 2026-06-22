@@ -6,6 +6,7 @@ from .html import (
     render_apps_html,
     render_groups_html,
     render_html,
+    render_report_html,
     render_summary_html,
     render_users_html,
 )
@@ -13,6 +14,7 @@ from .html import (
 __all__ = [
     "render_console",
     "render_html",
+    "render_report_html",
     "render_users_html",
     "render_groups_html",
     "render_apps_html",

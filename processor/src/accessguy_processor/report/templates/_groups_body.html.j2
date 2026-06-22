@@ -1,0 +1,170 @@
+{# Ciało modułu GRUPY — współdzielone przez standalone (groups.html.j2) i raport połączony (index.html.j2).
+   Wymaga w kontekście: dataset, view (=groups_view) oraz makra `sevbar`. Kafelki interaktywne. #}
+<div class="ag-module" data-module="groups">
+
+<section class="ag-exec">
+  <div class="ag-grade grade-{{ view.grade }}">
+    <span class="ag-grade-letter">{{ view.grade }}</span>
+    <span class="ag-grade-lbl">{{ tr('tmpl.groups.grade_lbl') }}</span>
+  </div>
+  <div class="ag-exec-body">
+    <h2>{{ tr('tmpl.groups.exec_h2') }}</h2>
+    <p class="ag-exec-note">{{ view.grade_note }}
+      {{ tr('tmpl.groups.priv') }} <strong class="{{ 'critv' if view.priv_group_count }}">{{ view.priv_group_count }}</strong> ·
+      role-assignable: <strong>{{ view.role_assignable_count }}</strong> ·
+      {{ tr('tmpl.groups.ownerless') }} <strong class="{{ 'warnv' if view.ownerless_count }}">{{ view.ownerless_count }}</strong> ·
+      {{ tr('tmpl.groups.dynamic') }} <strong>{{ view.dynamic_count }}</strong> ·
+      {{ tr('tmpl.groups.public') }} <strong>{{ view.public_m365_count }}</strong>
+    </p>
+    {% if view.top_findings %}
+    <ul class="ag-top">
+      {% for t in view.top_findings %}
+      <li><span class="badge {{ t.severity }}">{{ t.severity }}</span> <strong>{{ t.name }}</strong> — {{ t.headline }} <span class="muted">({{ tr('tmpl.points', points=t.score) }})</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">{{ tr('tmpl.groups.no_high_risk') }}</p>{% endif %}
+  </div>
+</section>
+
+{# Pasek rozkładu severity — zaraz po podsumowaniu, NAD kafelkami. #}
+<section class="ag-distrib">{{ sevbar(tr('community.module.groups'), view.group_total, view.sev_counts) }}</section>
+
+<section class="ag-summary">
+  <button type="button" class="ag-card ag-card-btn" data-filter-clear><span class="ag-num">{{ view.group_total }}</span><span class="ag-lbl">{{ tr('community.module.groups') }}</span></button>
+  <button type="button" class="ag-card ag-card-btn crit" data-filter-sev="critical"><span class="ag-num">{{ view.sev_counts['critical'] }}</span><span class="ag-lbl">Critical</span></button>
+  <button type="button" class="ag-card ag-card-btn high" data-filter-sev="high"><span class="ag-num">{{ view.sev_counts['high'] }}</span><span class="ag-lbl">High</span></button>
+  <button type="button" class="ag-card ag-card-btn med" data-filter-sev="medium"><span class="ag-num">{{ view.sev_counts['medium'] }}</span><span class="ag-lbl">Medium</span></button>
+  <button type="button" class="ag-card ag-card-btn {{ 'crit' if view.priv_group_count }}" data-filter-facet="priv"><span class="ag-num">{{ view.priv_group_count }}</span><span class="ag-lbl">{{ tr('tmpl.groups.card.priv') }}</span></button>
+  <button type="button" class="ag-card ag-card-btn {{ 'high' if view.guest_group_count }}" data-filter-facet="guests"><span class="ag-num">{{ view.guest_group_count }}</span><span class="ag-lbl">{{ tr('tmpl.groups.card.guests') }}</span></button>
+  <div class="ag-card"><span class="ag-num">{{ view.license_blast }}</span><span class="ag-lbl">{{ tr('tmpl.groups.card.lic_assign') }}</span></div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.groups.char_h2') }}</h2>
+  <div class="ag-grid">
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.groups.kinds_h3') }}</h3>
+      <table class="ag-table mini">
+        <tbody>
+          {% for k, n in view.kind_dist.items() %}
+          <tr><td>{{ k }}</td><td class="num">{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.groups.roles_h3') }}</h3>
+      {% if view.roles_via_groups %}
+      <table class="ag-table mini">
+        <thead><tr><th>{{ tr('tmpl.groups.col_role') }}</th><th>{{ tr('tmpl.groups.col_groups') }}</th></tr></thead>
+        <tbody>
+          {% for name, n in view.roles_via_groups %}
+          <tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">{{ tr('tmpl.groups.roles_none') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.groups.priv_h3') }}</h3>
+      {% if view.priv_groups %}
+      <table class="ag-table mini">
+        <thead><tr><th>{{ tr('tmpl.groups.col_group') }}</th><th>{{ tr('tmpl.groups.col_roles') }}</th><th>{{ tr('tmpl.groups.col_members') }}</th></tr></thead>
+        <tbody>
+          {% for g in view.priv_groups %}
+          <tr><td>{{ g.name }}</td><td>{{ g.roles }}</td><td class="num">{{ g.members if g.members is not none else '?' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<span class="muted">{{ tr('tmpl.groups.priv_none') }}</span>{% endif %}
+    </div>
+
+    <div class="ag-box">
+      <h3>{{ tr('tmpl.groups.hygiene_h3') }}</h3>
+      <ul class="ag-list">
+        <li>{{ tr('tmpl.groups.hyg_ownerless') }} <strong class="{{ 'warnv' if view.ownerless_count }}">{{ view.ownerless_count }}</strong></li>
+        <li>{{ tr('tmpl.groups.hyg_dynamic') }} <strong>{{ view.dynamic_count }}</strong></li>
+        <li>{{ tr('tmpl.groups.hyg_public') }} <strong>{{ view.public_m365_count }}</strong></li>
+        <li>{{ tr('tmpl.groups.hyg_licensing') }} <strong>{{ view.license_group_count }}</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>{{ tr('tmpl.groups.byrisk_h2') }} <span class="muted">{{ tr('tmpl.groups.byrisk_note') }}</span></h2>
+  {% include '_filterbar.html.j2' %}
+  {% for g in dataset.groups %}
+  {% set is_priv = g.assigned_roles and (g.assigned_roles | selectattr('is_privileged') | list) %}
+  <details class="acct sev-{{ g.severity }}" id="obj-{{ g.id }}"
+    data-facet="{{ g.group_kind }} {{ g.membership_type }}{% if is_priv %} priv{% endif %}{% if g.is_assignable_to_role %} roleassignable{% endif %}{% if g.guest_count %} guests{% endif %}">
+    <summary>
+      <span class="badge {{ g.severity }}">{{ g.severity }}</span>
+      <span class="acct-score">{{ g.review_score }}</span>
+      <span class="acct-upn">{{ g.display_name }}</span>
+      <span class="acct-tag">{{ g.group_kind }}</span>
+      <span class="acct-tag">{{ g.membership_type }}</span>
+      {% if g.is_assignable_to_role %}<span class="acct-tag" style="border-color:var(--high);color:var(--high)">role-assignable</span>{% endif %}
+      <span class="acct-sig muted">
+        {%- if g.flags %}{{ g.flags[:2] | map(attribute='title') | join('; ') }}{% if g.flags|length > 2 %} (+{{ g.flags|length - 2 }}){% endif %}{% else %}{{ tr('tmpl.users.no_signals') }}{% endif -%}
+      </span>
+    </summary>
+    <div class="acct-body">
+      <div class="acct-facts">
+        <div><span class="k">{{ tr('tmpl.groups.fact.kind') }}</span><span class="v">{{ g.group_kind }}{% if g.visibility %} · {{ g.visibility }}{% endif %}</span></div>
+        <div><span class="k">{{ tr('tmpl.groups.fact.membership') }}</span><span class="v">{{ g.membership_type }}</span></div>
+        <div><span class="k">{{ tr('tmpl.groups.fact.members_guests') }}</span><span class="v">{{ g.member_count if g.member_count is not none else '?' }} / {{ g.guest_count if g.guest_count is not none else '?' }}</span></div>
+        <div><span class="k">{{ tr('tmpl.groups.fact.owners') }}</span><span class="v">{% if g.owners %}{{ g.owners | join(', ') }}{% else %}—{% endif %}</span></div>
+        <div><span class="k">{{ tr('tmpl.fact.created') }}</span><span class="v">{{ g.created_date_time.strftime('%Y-%m-%d') }}</span></div>
+        <div><span class="k">{{ tr('tmpl.groups.fact.onprem') }}</span><span class="v">{% if g.on_premises_sync_enabled is none %}—{% elif g.on_premises_sync_enabled %}{{ tr('tmpl.val.yes') }}{% else %}{{ tr('tmpl.val.no_plain') }}{% endif %}</span></div>
+        <div><span class="k">{{ tr('tmpl.fact.licenses') }}</span><span class="v">{% if g.assigned_licenses %}{% for l in g.assigned_licenses %}{{ friendly_sku(l) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</span></div>
+        <div><span class="k">Mail</span><span class="v">{{ g.mail or '—' }}</span></div>
+      </div>
+
+      {% if g.membership_type == 'dynamic' and g.membership_rule %}
+      <div class="acct-activity"><strong>{{ tr('tmpl.groups.dyn_rule') }}</strong> <code>{{ g.membership_rule }}</code></div>
+      {% endif %}
+
+      {% if g.description %}<div class="acct-activity muted">{{ g.description }}</div>{% endif %}
+
+      {% if g.assigned_roles %}
+      <div class="acct-roles"><strong>{{ tr('tmpl.groups.roles_assigned') }}</strong>
+        {% for r in g.assigned_roles %}<span class="role {{ 'priv' if r.is_privileged }}">{{ r.role_name }} <span class="muted">({{ r.assignment_type }})</span></span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if g.members %}
+      <details class="people">
+        <summary>{{ tr('tmpl.groups.members_summary', count=(g.member_count if g.member_count is not none else g.members|length)) }}</summary>
+        <ul>
+          {% for m in g.members %}
+          <li>{{ m.display_name }}{% if m.user_principal_name %} <span class="muted">· {{ m.user_principal_name }}</span>{% endif %}{% if m.type != 'user' %}<span class="ptype">{{ m.type }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if g.member_count is not none and g.member_count > g.members|length %}
+        <p class="muted" style="margin-top:6px">{{ tr('tmpl.groups.members_more', count=(g.member_count - g.members|length), shown=g.members|length) }}</p>
+        {% endif %}
+      </details>
+      {% elif g.member_count %}
+      <div class="acct-activity muted">{{ tr('tmpl.groups.members_not_fetched', count=g.member_count) }}</div>
+      {% endif %}
+
+      <div class="acct-flags">
+        {% for f in g.flags %}
+        <div class="flag">
+          <span class="flag-title {{ f.severity }}">{{ f.title }} <span class="muted">[{{ tr('tmpl.points', points=f.points) }}]</span></span>
+          <span class="flag-ev">{{ f.evidence }}</span>
+          <span class="flag-rec">→ {{ f.recommendation }}</span>
+        </div>
+        {% else %}<span class="muted">{{ tr('tmpl.groups.flags_none') }}</span>{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted">{{ tr('tmpl.groups.empty') }}</p>
+  {% endfor %}
+</section>
+
+</div>
